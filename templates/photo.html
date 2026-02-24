@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo - NuiStagram</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav>
+        <a href="/" class="logo">NuiStagram</a>
+        <div class="nav-auth">
+            {{if .User}}
+            <span>{{.User.Username}}</span>
+            <a href="/upload">Upload</a>
+            <a href="/favorites">★</a>
+            <a href="/albums">Albums</a>
+            <a href="/logout">Logout</a>
+            {{else}}
+            <a href="/login">Login</a>
+            <a href="/register">Register</a>
+            {{end}}
+        </div>
+    </nav>
+    <main>
+        <div class="photo-detail">
+            <div class="photo-image">
+                <img src="/static/uploads/{{.Photo.Filename}}" alt="Photo">
+            </div>
+            <div class="photo-meta">
+                <div class="nui-tags-large">
+                    {{range .Photo.NuiNames}}
+                    <a href="/nui/{{.}}" class="nui-tag">{{.}}</a>
+                    {{end}}
+                </div>
+                {{if .Photo.Description}}<p class="description">{{.Photo.Description}}</p>{{end}}
+                {{if not .Photo.TakenAt.IsZero}}<p class="date"><strong>Date:</strong> {{.Photo.TakenAt.Format "January 2, 2006"}}</p>{{end}}
+                <p class="uploaded"><strong>By:</strong> <a href="/user/{{.Username}}">{{.Username}}</a></p>
+                <p class="uploaded"><strong>Uploaded:</strong> {{.Photo.CreatedAt.Format "January 2, 2006"}}</p>
+                
+                <div class="photo-actions">
+                    {{if .User}}
+                    <a href="/photo/{{.Photo.ID}}/favorite" class="btn {{if .Photo.IsFavorite}}btn-favorite{{else}}btn-secondary{{end}}">{{if .Photo.IsFavorite}}★ Unfavorite{{else}}☆ Favorite{{end}}</a>
+                    {{if eq .User.ID .Photo.UserID}}
+                    <a href="/photo/{{.Photo.ID}}/edit" class="btn btn-secondary">Edit</a>
+                    <form method="POST" action="/photo/{{.Photo.ID}}/delete" class="inline-form" onsubmit="return confirm('Delete this photo?')">
+                        <button type="submit" class="btn btn-danger">Delete</button>
+                    </form>
+                    {{end}}
+                    {{end}}
+                </div>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

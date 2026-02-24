@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Favorites - NuiStagram</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav>
+        <a href="/" class="logo">NuiStagram</a>
+        <div class="nav-links">
+            {{range .Nuis}}
+            <a href="/nui/{{.Name}}">{{.Name}}</a>
+            {{end}}
+        </div>
+        <div class="nav-auth">
+            <span>{{.User.Username}}</span>
+            <a href="/upload">Upload</a>
+            <a href="/albums">Albums</a>
+            <a href="/logout">Logout</a>
+        </div>
+    </nav>
+    <main>
+        <h1>★ My Favorites</h1>
+        
+        {{if .Photos}}
+        <div class="gallery">
+            {{range .Photos}}
+            <div class="photo-card">
+                <a href="/photo/{{.ID}}">
+                    {{if .Thumbnail}}
+                    <img src="/static/uploads/{{.Thumbnail}}" alt="Photo" loading="lazy">
+                    {{else}}
+                    <img src="/static/uploads/{{.Filename}}" alt="Photo" loading="lazy">
+                    {{end}}
+                </a>
+                <div class="photo-info">
+                    <div class="nui-tags">
+                        {{range .NuiNames}}
+                        <a href="/nui/{{.}}" class="nui-tag">{{.}}</a>
+                        {{end}}
+                    </div>
+                    {{if .Description}}<p>{{.Description}}</p>{{end}}
+                    {{if not .TakenAt.IsZero}}<small>{{.TakenAt.Format "2006-01-02"}}</small>{{end}}
+                    {{if eq $.User.ID .UserID}}
+                    <div class="card-actions">
+                        <a href="/photo/{{.ID}}/edit" class="btn-small">Edit</a>
+                        <form method="POST" action="/photo/{{.ID}}/delete" class="inline-form" onsubmit="return confirm('Delete this photo?')">
+                            <button type="submit" class="btn-small btn-danger">Delete</button>
+                        </form>
+                    </div>
+                    {{end}}
+                    <a href="/photo/{{.ID}}/favorite" class="btn-small btn-favorite">★ Unfavorite</a>
+                </div>
+            </div>
+            {{end}}
+        </div>
+
+        {{if .Pagination}}
+        {{if gt .Pagination.TotalPages 1}}
+        <div class="pagination">
+            <span class="pagination-info">Page {{.Pagination.CurrentPage}} of {{.Pagination.TotalPages}}</span>
+            <div class="pagination-controls">
+                {{if .Pagination.HasPrev}}
+                <a href="/favorites?page={{sub .Pagination.CurrentPage 1}}" class="pagination-btn">&laquo; Prev</a>
+                {{else}}
+                <span class="pagination-btn disabled">&laquo; Prev</span>
+                {{end}}
+                
+                {{range $i := .Pagination.Pages}}
+                <a href="/favorites?page={{$i}}" class="pagination-btn{{if eq $i $.Pagination.CurrentPage}} current{{end}}">{{$i}}</a>
+                {{end}}
+                
+                {{if .Pagination.HasNext}}
+                <a href="/favorites?page={{add .Pagination.CurrentPage 1}}" class="pagination-btn">Next &raquo;</a>
+                {{else}}
+                <span class="pagination-btn disabled">Next &raquo;</span>
+                {{end}}
+            </div>
+        </div>
+        {{end}}
+        {{end}}
+        {{else}}
+        <p class="empty">No favorite photos yet. Click ☆ on any photo to add it to your favorites!</p>
+        {{end}}
+    </main>
+</body>
+</html>
