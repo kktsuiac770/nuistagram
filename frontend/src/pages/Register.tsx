@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/Auth'
+import { validatePassword } from '../lib/api'
 
 export default function Register() {
   const [username, setUsername] = useState('')
@@ -10,9 +11,17 @@ export default function Register() {
   const navigate = useNavigate()
   const { register } = useAuth()
 
+  const passwordError = validatePassword(password)
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+
+    if (passwordError) {
+      setError(passwordError)
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -45,6 +54,8 @@ export default function Register() {
               value={username}
               onChange={e => setUsername(e.target.value)}
               required
+              minLength={3}
+              maxLength={50}
               className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 rounded focus:outline-none focus:border-gray-400"
             />
             <input
@@ -55,9 +66,12 @@ export default function Register() {
               required
               className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 rounded focus:outline-none focus:border-gray-400"
             />
+            {password.length > 0 && passwordError && (
+              <p className="text-xs text-red-500 mt-1">{passwordError}</p>
+            )}
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !username.trim() || !password || !!passwordError}
               className="w-full py-2 text-sm font-semibold bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 transition-colors"
             >
               {loading ? 'Signing up...' : 'Sign up'}

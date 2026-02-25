@@ -1,0 +1,278 @@
+package handlers
+
+import (
+	"database/sql"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+	"time"
+
+	"nuistagram/internal/models"
+	"nuistagram/internal/repository"
+	"nuistagram/internal/repository/mocks"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"golang.org/x/crypto/bcrypt"
+)
+
+func setupAuthMocks() *mocks.MockRepositories {
+	mockRepos := mocks.NewMockRepositories()
+	Repos = &repository.Repositories{
+		Users:         mockRepos.Users,
+		Nuis:          mockRepos.Nuis,
+		Photos:        mockRepos.Photos,
+		Albums:        mockRepos.Albums,
+		Favorites:     mockRepos.Favorites,
+		Follows:       mockRepos.Follows,
+		Likes:         mockRepos.Likes,
+		Comments:      mockRepos.Comments,
+		Notifications: mockRepos.Notifications,
+	}
+	return mockRepos
+}
+
+func TestRegister_Success(t *testing.T) {
+	mockRepos := setupAuthMocks()
+
+	mockRepos.Users.On("Create", "testuser", mock.AnythingOfType("string")).Return(int64(1), nil)
+
+	form := url.Values{}
+	form.Add("username", "testuser")
+	form.Add("password", "Password123")
+
+	req := httptest.NewRequest("POST", "/register", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	Register(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var response map[string]bool
+	json.Unmarshal(w.Body.Bytes(), &response)
+	assert.True(t, response["success"])
+	mockRepos.Users.AssertExpectations(t)
+}
+
+func TestRegister_MissingFields(t *testing.T) {
+	setupAuthMocks()
+
+	tests := []struct {
+		name     string
+		username string
+		password string
+	}{
+		{"empty both", "", ""},
+		{"empty username", "", "Password123"},
+		{"empty password", "testuser", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			form := url.Values{}
+			form.Add("username", tt.username)
+			form.Add("password", tt.password)
+
+			req := httptest.NewRequest("POST", "/register", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+
+			Register(w, req)
+
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+		})
+	}
+}
+
+func TestRegister_UsernameTooShort(t *testing.T) {
+	setupAuthMocks()
+
+	form := url.Values{}
+	form.Add("username", "ab")
+	form.Add("password", "Password123")
+
+	req := httptest.NewRequest("POST", "/register", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	Register(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestRegister_WeakPassword(t *testing.T) {
+	setupAuthMocks()
+
+	tests := []struct {
+		name     string
+		password string
+	}{
+		{"too short", "Pass1"},
+		{"no uppercase", "password123"},
+		{"no lowercase", "PASSWORD123"},
+		{"no digit", "Passwordddd"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			form := url.Values{}
+			form.Add("username", "testuser")
+			form.Add("password", tt.password)
+
+			req := httptest.NewRequest("POST", "/register", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+
+			Register(w, req)
+
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+		})
+	}
+}
+
+func TestRegister_DuplicateUsername(t *testing.T) {
+	mockRepos := setupAuthMocks()
+
+	mockRepos.Users.On("Create", "existinguser", mock.AnythingOfType("string")).Return(int64(0), sql.ErrNoRows)
+
+	form := url.Values{}
+	form.Add("username", "existinguser")
+	form.Add("password", "Password123")
+
+	req := httptest.NewRequest("POST", "/register", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	Register(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	mockRepos.Users.AssertExpectations(t)
+}
+
+func TestLogin_Success(t *testing.T) {
+	mockRepos := setupAuthMocks()
+
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("Password123"), bcrypt.DefaultCost)
+	mockUser := &models.User{
+		ID:           1,
+		Username:     "testuser",
+		PasswordHash: string(hashedPassword),
+		CreatedAt:    time.Now(),
+	}
+
+	mockRepos.Users.On("GetByUsername", "testuser").Return(mockUser, nil)
+
+	form := url.Values{}
+	form.Add("username", "testuser")
+	form.Add("password", "Password123")
+
+	req := httptest.NewRequest("POST", "/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	Login(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var response map[string]bool
+	json.Unmarshal(w.Body.Bytes(), &response)
+	assert.True(t, response["success"])
+
+	cookie := w.Result().Cookies()
+	assert.Len(t, cookie, 1)
+	assert.Equal(t, "session", cookie[0].Name)
+	mockRepos.Users.AssertExpectations(t)
+}
+
+func TestLogin_InvalidUsername(t *testing.T) {
+	mockRepos := setupAuthMocks()
+
+	mockRepos.Users.On("GetByUsername", "nonexistent").Return(nil, sql.ErrNoRows)
+
+	form := url.Values{}
+	form.Add("username", "nonexistent")
+	form.Add("password", "Password123")
+
+	req := httptest.NewRequest("POST", "/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	Login(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	mockRepos.Users.AssertExpectations(t)
+}
+
+func TestLogin_InvalidPassword(t *testing.T) {
+	mockRepos := setupAuthMocks()
+
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("CorrectPass123"), bcrypt.DefaultCost)
+	mockUser := &models.User{
+		ID:           1,
+		Username:     "testuser",
+		PasswordHash: string(hashedPassword),
+		CreatedAt:    time.Now(),
+	}
+
+	mockRepos.Users.On("GetByUsername", "testuser").Return(mockUser, nil)
+
+	form := url.Values{}
+	form.Add("username", "testuser")
+	form.Add("password", "WrongPassword123")
+
+	req := httptest.NewRequest("POST", "/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	Login(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	mockRepos.Users.AssertExpectations(t)
+}
+
+func TestLogout_Success(t *testing.T) {
+	req := httptest.NewRequest("POST", "/logout", nil)
+	sessionToken := CreateSession(1)
+	req.AddCookie(&http.Cookie{Name: "session", Value: sessionToken})
+	w := httptest.NewRecorder()
+
+	Logout(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var response map[string]bool
+	json.Unmarshal(w.Body.Bytes(), &response)
+	assert.True(t, response["success"])
+
+	cookie := w.Result().Cookies()
+	assert.Len(t, cookie, 1)
+	assert.Equal(t, "session", cookie[0].Name)
+	assert.Equal(t, -1, cookie[0].MaxAge)
+}
+
+func TestValidatePassword(t *testing.T) {
+	tests := []struct {
+		name     string
+		password string
+		valid    bool
+	}{
+		{"valid password", "Password123", true},
+		{"too short", "Pass1", false},
+		{"no uppercase", "password123", false},
+		{"no lowercase", "PASSWORD123", false},
+		{"no digit", "Passwordddd", false},
+		{"exactly 8 chars", "Passwor1", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validatePassword(tt.password)
+			if tt.valid {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+			}
+		})
+	}
+}

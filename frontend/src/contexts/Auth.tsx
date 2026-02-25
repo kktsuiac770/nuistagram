@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { api, type User } from '../lib/api'
+import { api, type User, clearCsrfToken } from '../lib/api'
 
 interface AuthContextType {
   user: User | null
@@ -36,6 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     await api.logout()
+    clearCsrfToken()
     setUser(null)
   }
 
