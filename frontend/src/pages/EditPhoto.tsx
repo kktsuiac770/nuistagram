@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
@@ -17,17 +17,11 @@ export default function EditPhoto() {
     enabled: !!id,
   })
 
-  const [description, setDescription] = useState('')
-  const [nuiNames, setNuiNames] = useState('')
-  const [initialized, setInitialized] = useState(false)
+  const [editedDescription, setEditedDescription] = useState<string | null>(null)
+  const [editedNuiNames, setEditedNuiNames] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (photo && !initialized) {
-      setDescription(photo.description || '')
-      setNuiNames(photo.nui_names.join(', '))
-      setInitialized(true)
-    }
-  }, [photo, initialized])
+  const description = editedDescription ?? (photo?.description || '')
+  const nuiNames = editedNuiNames ?? (photo?.nui_names?.join(', ') || '')
 
   const { data: nuis } = useQuery({
     queryKey: ['nuis'],
@@ -97,7 +91,7 @@ export default function EditPhoto() {
               <input
                 type="text"
                 value={nuiNames}
-                onChange={e => setNuiNames(e.target.value)}
+                onChange={e => setEditedNuiNames(e.target.value)}
                 placeholder="e.g., Fluffy, Whiskers"
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -107,7 +101,7 @@ export default function EditPhoto() {
                     <button
                       key={nui.id}
                       type="button"
-                      onClick={() => setNuiNames(prev => prev ? `${prev}, ${nui.name}` : nui.name)}
+                      onClick={() => setEditedNuiNames(prev => prev ? `${prev}, ${nui.name}` : nui.name)}
                       className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-800 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
                     >
                       {nui.name}
@@ -121,7 +115,7 @@ export default function EditPhoto() {
               <label className="block text-sm font-medium mb-1">Description</label>
               <textarea
                 value={description}
-                onChange={e => setDescription(e.target.value)}
+                onChange={e => setEditedDescription(e.target.value)}
                 rows={3}
                 placeholder="Write a caption..."
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"

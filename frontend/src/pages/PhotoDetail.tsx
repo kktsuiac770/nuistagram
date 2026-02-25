@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
@@ -85,21 +85,21 @@ export default function PhotoDetail() {
   const hasPrev = currentIndex > 0
   const hasNext = allPhotos?.photos && currentIndex < allPhotos.photos.length - 1
 
-  const goToPrev = () => {
+  const goToPrev = useCallback(() => {
     if (hasPrev && allPhotos?.photos) {
       navigate(`/photo/${allPhotos.photos[currentIndex - 1].id}`, { replace: true })
     }
-  }
+  }, [hasPrev, allPhotos, currentIndex, navigate])
 
-  const goToNext = () => {
+  const goToNext = useCallback(() => {
     if (hasNext && allPhotos?.photos) {
       navigate(`/photo/${allPhotos.photos[currentIndex + 1].id}`, { replace: true })
     }
-  }
+  }, [hasNext, allPhotos, currentIndex, navigate])
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     navigate('/', { replace: true })
-  }
+  }, [navigate])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -114,7 +114,7 @@ export default function PhotoDetail() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentIndex, allPhotos])
+  }, [goToNext, goToPrev, handleClose])
 
   if (isLoading || !photo) {
     return (
