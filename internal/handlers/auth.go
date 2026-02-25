@@ -3,7 +3,6 @@ package handlers
 import (
 	"database/sql"
 	"net/http"
-	"nuistagram/internal/database"
 	"nuistagram/internal/models"
 	"time"
 
@@ -11,16 +10,11 @@ import (
 )
 
 func Register(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		renderTemplate(w, "register.html", nil)
-		return
-	}
-
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 
 	if username == "" || password == "" {
-		renderTemplate(w, "register.html", map[string]string{"Error": "Username and password required"})
+		http.Error(w, `{"error": "Username and password required"}`, http.StatusBadRequest)
 		return
 	}
 
@@ -30,35 +24,23 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = database.DB.Exec(
-		"INSERT INTO users (username, password_hash) VALUES (?, ?)",
-		username, string(hash),
-	)
+	_, err = Repos.Users.Create(username, string(hash))
 	if err != nil {
-		renderTemplate(w, "register.html", map[string]string{"Error": "Username already exists"})
+		http.Error(w, `{"error": "Username already exists"}`, http.StatusBadRequest)
 		return
 	}
 
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"success": true}`))
 }
 
 func Login(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		renderTemplate(w, "login.html", nil)
-		return
-	}
-
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 
-	var user models.User
-	err := database.DB.QueryRow(
-		"SELECT id, username, password_hash, created_at FROM users WHERE username = ?",
-		username,
-	).Scan(&user.ID, &user.Username, &user.PasswordHash, &user.CreatedAt)
-
+	user, err := Repos.Users.GetByUsername(username)
 	if err == sql.ErrNoRows {
-		renderTemplate(w, "login.html", map[string]string{"Error": "Invalid credentials"})
+		http.Error(w, `{"error": "Invalid credentials"}`, http.StatusUnauthorized)
 		return
 	}
 	if err != nil {
@@ -67,7 +49,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		renderTemplate(w, "login.html", map[string]string{"Error": "Invalid credentials"})
+		http.Error(w, `{"error": "Invalid credentials"}`, http.StatusUnauthorized)
 		return
 	}
 
@@ -80,7 +62,8 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		Expires:  time.Now().Add(24 * time.Hour),
 	})
 
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"success": true}`))
 }
 
 func Logout(w http.ResponseWriter, r *http.Request) {
@@ -91,7 +74,8 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		MaxAge:   -1,
 	})
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"success": true}`))
 }
 
 func GetCurrentUser(r *http.Request) *models.User {
@@ -105,15 +89,10 @@ func GetCurrentUser(r *http.Request) *models.User {
 		return nil
 	}
 
-	var user models.User
-	err = database.DB.QueryRow(
-		"SELECT id, username, password_hash, created_at FROM users WHERE id = ?",
-		userID,
-	).Scan(&user.ID, &user.Username, &user.PasswordHash, &user.CreatedAt)
-
+	user, err := Repos.Users.GetByID(userID)
 	if err != nil {
 		return nil
 	}
 
-	return &user
+	return user
 }

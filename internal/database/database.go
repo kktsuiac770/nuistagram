@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -21,6 +22,11 @@ func Init(dbPath string) error {
 	if err != nil {
 		return err
 	}
+
+	DB.SetMaxOpenConns(10)
+	DB.SetMaxIdleConns(5)
+	DB.SetConnMaxLifetime(time.Hour)
+	DB.SetConnMaxIdleTime(10 * time.Minute)
 
 	return createTables()
 }

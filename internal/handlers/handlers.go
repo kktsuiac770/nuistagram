@@ -3,15 +3,24 @@ package handlers
 import (
 	"html/template"
 	"net/http"
+	"nuistagram/internal/cache"
+	"nuistagram/internal/database"
+	"nuistagram/internal/repository"
 	"strconv"
 	"strings"
 )
 
 var templates *template.Template
+var Repos *repository.Repositories
 
 var funcMap = template.FuncMap{
 	"sub": func(a, b int) int { return a - b },
 	"add": func(a, b int) int { return a + b },
+}
+
+func Init() {
+	c := cache.New(5 * 60 * 1000000000)
+	Repos = repository.NewRepositories(database.DB, c)
 }
 
 func InitTemplates() error {
@@ -69,19 +78,19 @@ func Home(w http.ResponseWriter, r *http.Request) {
 		userID = user.ID
 	}
 
-	result, err := SearchPhotos(tags, mode, page, userID)
+	result, err := Repos.Photos.Search(tags, mode, page, userID)
 	if err != nil {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 
-	nuis, err := GetAllNuis()
+	nuis, err := Repos.Nuis.GetAll()
 	if err != nil {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 
-	users, _ := GetAllUsers()
+	users, _ := Repos.Users.GetAll()
 
 	renderTemplate(w, "index.html", map[string]interface{}{
 		"User":         user,
