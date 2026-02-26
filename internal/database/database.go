@@ -11,7 +11,14 @@ import (
 
 var DB *sql.DB
 
-func Init(dbPath string) error {
+type PoolConfig struct {
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
+	ConnMaxIdleTime time.Duration
+}
+
+func Init(dbPath string, pool PoolConfig) error {
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -23,10 +30,10 @@ func Init(dbPath string) error {
 		return err
 	}
 
-	DB.SetMaxOpenConns(10)
-	DB.SetMaxIdleConns(5)
-	DB.SetConnMaxLifetime(time.Hour)
-	DB.SetConnMaxIdleTime(10 * time.Minute)
+	DB.SetMaxOpenConns(pool.MaxOpenConns)
+	DB.SetMaxIdleConns(pool.MaxIdleConns)
+	DB.SetConnMaxLifetime(pool.ConnMaxLifetime)
+	DB.SetConnMaxIdleTime(pool.ConnMaxIdleTime)
 
 	return createTables()
 }
@@ -189,4 +196,11 @@ func migrateUserProfile() {
 
 	DB.Exec(`ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''`)
 	DB.Exec(`ALTER TABLE users ADD COLUMN avatar TEXT DEFAULT ''`)
+}
+
+func HealthCheck() error {
+	if DB == nil {
+		return sql.ErrConnDone
+	}
+	return DB.Ping()
 }

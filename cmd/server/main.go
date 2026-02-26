@@ -1,10 +1,15 @@
 package main
 
 import (
-	"log"
+	"fmt"
 	"net/http"
+	"nuistagram/internal/config"
 	"nuistagram/internal/database"
 	"nuistagram/internal/handlers"
+	"nuistagram/internal/logging"
+	"nuistagram/internal/metrics"
+	"nuistagram/internal/middleware"
+	"nuistagram/internal/tracing"
 	"os"
 	"path/filepath"
 )
@@ -25,97 +30,171 @@ func (h *SPAHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	if err := database.Init("data/nuistagram.db"); err != nil {
-		log.Fatal("Failed to init database:", err)
+	cfg, err := config.Load("config.yaml")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Failed to load config:", err)
+		os.Exit(1)
 	}
 
-	handlers.Init()
-	handlers.SetSecureCookie(false)
+	env := "development"
+	if cfg.Environment != "" {
+		env = cfg.Environment
+	}
 
-	reactDist := "frontend/dist"
+	logging.Init(env, nil)
+	logging.Info("Starting NUIstagram", "env", env)
+
+	metrics.Init()
+	tracing.Init("nuistagram", nil)
+
+	pool := database.PoolConfig{
+		MaxOpenConns:    cfg.Database.MaxOpenConns,
+		MaxIdleConns:    cfg.Database.MaxIdleConns,
+		ConnMaxLifetime: cfg.Database.ConnMaxLifetime,
+		ConnMaxIdleTime: cfg.Database.ConnMaxIdleTime,
+	}
+
+	if err := database.Init(cfg.Database.Path, pool); err != nil {
+		logging.Error("Failed to init database", "error", err)
+		os.Exit(1)
+	}
+	logging.Info("Database initialized")
+
+	handlers.Init()
+	handlers.SetSecureCookie(cfg.Security.SecureCookie)
+
+	reactDist := cfg.Paths.ReactDist
+	staticDir := cfg.Paths.Static
 	indexPath := filepath.Join(reactDist, "index.html")
+	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 
 	if _, err := os.Stat(indexPath); err == nil {
-		log.Println("Serving React app from", reactDist)
-
-		mux := http.NewServeMux()
-
-		mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
-		mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir(reactDist+"/assets"))))
-
-		mux.HandleFunc("/api/photos", handlers.APIGetPhotos)
-		mux.HandleFunc("/api/photo/{id}", handlers.APIGetPhoto)
-		mux.HandleFunc("/api/photo/{id}/favorite", handlers.CSRFMiddleware(handlers.APIToggleFavorite))
-		mux.HandleFunc("/api/photo/{id}/like", handlers.CSRFMiddleware(handlers.APIToggleLike))
-		mux.HandleFunc("/api/photo/{id}/likers", handlers.APIGetLikers)
-		mux.HandleFunc("/api/photo/{id}/comments", handlers.APIGetComments)
-		mux.HandleFunc("POST /api/photo/{id}/comment", handlers.CSRFMiddleware(handlers.APICreateComment))
-		mux.HandleFunc("/api/comment/{id}", handlers.CSRFMiddleware(handlers.APIDeleteComment))
-		mux.HandleFunc("/api/me", handlers.APIGetMe)
-		mux.HandleFunc("/api/nuis", handlers.APIGetNuis)
-		mux.HandleFunc("/api/csrf-token", handlers.GetCSRFToken)
-		mux.HandleFunc("/api/user/{username}", handlers.APIGetUser)
-		mux.HandleFunc("/api/user/{username}/photos", handlers.APIGetUserPhotos)
-		mux.HandleFunc("POST /api/user/{username}/follow", handlers.CSRFMiddleware(handlers.APIFollowByUsername))
-		mux.HandleFunc("POST /api/user/{username}/unfollow", handlers.CSRFMiddleware(handlers.APIUnfollowByUsername))
-		mux.HandleFunc("/api/search/users", handlers.APISearchUsers)
-		mux.HandleFunc("POST /api/profile", handlers.CSRFMiddleware(handlers.APIUpdateProfile))
-		mux.HandleFunc("POST /api/avatar", handlers.CSRFMiddleware(handlers.APIUploadAvatar))
-		mux.HandleFunc("/api/notifications", handlers.APIGetNotifications)
-		mux.HandleFunc("/api/notifications/unread", handlers.APIUnreadCount)
-		mux.HandleFunc("POST /api/notifications/{id}/read", handlers.CSRFMiddleware(handlers.APIMarkNotificationRead))
-		mux.HandleFunc("POST /api/notifications/read-all", handlers.CSRFMiddleware(handlers.APIMarkAllNotificationsRead))
-
-		mux.HandleFunc("POST /login", handlers.RateLimitLogin(handlers.Login))
-		mux.HandleFunc("POST /register", handlers.RateLimitLogin(handlers.Register))
-		mux.HandleFunc("/logout", handlers.Logout)
-		mux.HandleFunc("POST /upload", handlers.CSRFMiddleware(handlers.Upload))
-		mux.HandleFunc("POST /photo/{id}/delete", handlers.CSRFMiddleware(handlers.DeletePhoto))
-		mux.HandleFunc("POST /photo/{id}/favorite", handlers.CSRFMiddleware(handlers.ToggleFavorite))
-		mux.HandleFunc("/export", handlers.ExportPhotos)
-
-		mux.Handle("/", &SPAHandler{staticPath: reactDist, indexPath: indexPath})
-
-		log.Println("Server starting on :8080")
-		log.Fatal(http.ListenAndServe(":8080", mux))
+		logging.Info("Serving React app", "path", reactDist)
+		startReactServer(addr, reactDist, staticDir, indexPath)
 	} else {
-		log.Println("React dist not found, serving HTML templates")
-		if err := handlers.InitTemplates(); err != nil {
-			log.Fatal("Failed to init templates:", err)
-		}
+		logging.Info("React dist not found, serving HTML templates")
+		startTemplateServer(addr, staticDir)
+	}
+}
 
-		http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
-		http.HandleFunc("/api/photos", handlers.APIGetPhotos)
-		http.HandleFunc("/api/photo/{id}", handlers.APIGetPhoto)
-		http.HandleFunc("/api/photo/{id}/favorite", handlers.CSRFMiddleware(handlers.APIToggleFavorite))
-		http.HandleFunc("/api/photo/{id}/like", handlers.CSRFMiddleware(handlers.APIToggleLike))
-		http.HandleFunc("/api/photo/{id}/likers", handlers.APIGetLikers)
-		http.HandleFunc("/api/photo/{id}/comments", handlers.APIGetComments)
-		http.HandleFunc("POST /api/photo/{id}/comment", handlers.CSRFMiddleware(handlers.APICreateComment))
-		http.HandleFunc("/api/me", handlers.APIGetMe)
-		http.HandleFunc("/api/nuis", handlers.APIGetNuis)
-		http.HandleFunc("/api/user/{username}", handlers.APIGetUser)
-		http.HandleFunc("/api/user/{username}/photos", handlers.APIGetUserPhotos)
+func chain(h http.Handler, middlewares ...func(http.Handler) http.Handler) http.Handler {
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		h = middlewares[i](h)
+	}
+	return h
+}
 
-		http.HandleFunc("/", handlers.Home)
-		http.HandleFunc("/login", handlers.RateLimitLogin(handlers.Login))
-		http.HandleFunc("/register", handlers.RateLimitLogin(handlers.Register))
-		http.HandleFunc("/logout", handlers.Logout)
-		http.HandleFunc("/upload", handlers.CSRFMiddleware(handlers.Upload))
-		http.HandleFunc("/photo/{id}/delete", handlers.CSRFMiddleware(handlers.DeletePhoto))
-		http.HandleFunc("/photo/{id}/favorite", handlers.CSRFMiddleware(handlers.ToggleFavorite))
-		http.HandleFunc("/export", handlers.ExportPhotos)
-		http.HandleFunc("/nui/{name}", handlers.NuiProfile)
-		http.HandleFunc("/user/{username}", handlers.UserProfile)
-		http.HandleFunc("/favorites", handlers.Favorites)
-		http.HandleFunc("/photo/{id}", handlers.ViewPhoto)
-		http.HandleFunc("/photo/{id}/edit", handlers.CSRFMiddleware(handlers.EditPhoto))
-		http.HandleFunc("/albums", handlers.ListAlbums)
-		http.HandleFunc("/albums/new", handlers.CSRFMiddleware(handlers.CreateAlbum))
-		http.HandleFunc("/album/{id}", handlers.ViewAlbum)
-		http.HandleFunc("/album/{id}/delete", handlers.CSRFMiddleware(handlers.DeleteAlbum))
+func startReactServer(addr, reactDist, staticDir, indexPath string) {
+	mux := http.NewServeMux()
 
-		log.Println("Server starting on :8080")
-		log.Fatal(http.ListenAndServe(":8080", nil))
+	mux.HandleFunc("/healthz", handlers.Healthz)
+	mux.HandleFunc("/readyz", handlers.Readyz)
+	mux.HandleFunc("/metrics", metrics.Handler)
+
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
+	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir(reactDist+"/assets"))))
+
+	mux.HandleFunc("/api/photos", handlers.APIGetPhotos)
+	mux.HandleFunc("/api/photo/{id}", handlers.APIGetPhoto)
+	mux.HandleFunc("/api/photo/{id}/favorite", handlers.CSRFMiddleware(handlers.APIToggleFavorite))
+	mux.HandleFunc("/api/photo/{id}/like", handlers.CSRFMiddleware(handlers.APIToggleLike))
+	mux.HandleFunc("/api/photo/{id}/likers", handlers.APIGetLikers)
+	mux.HandleFunc("/api/photo/{id}/comments", handlers.APIGetComments)
+	mux.HandleFunc("POST /api/photo/{id}/comment", handlers.CSRFMiddleware(handlers.APICreateComment))
+	mux.HandleFunc("/api/comment/{id}", handlers.CSRFMiddleware(handlers.APIDeleteComment))
+	mux.HandleFunc("/api/me", handlers.APIGetMe)
+	mux.HandleFunc("/api/nuis", handlers.APIGetNuis)
+	mux.HandleFunc("/api/csrf-token", handlers.GetCSRFToken)
+	mux.HandleFunc("/api/user/{username}", handlers.APIGetUser)
+	mux.HandleFunc("/api/user/{username}/photos", handlers.APIGetUserPhotos)
+	mux.HandleFunc("POST /api/user/{username}/follow", handlers.CSRFMiddleware(handlers.APIFollowByUsername))
+	mux.HandleFunc("POST /api/user/{username}/unfollow", handlers.CSRFMiddleware(handlers.APIUnfollowByUsername))
+	mux.HandleFunc("/api/search/users", handlers.APISearchUsers)
+	mux.HandleFunc("POST /api/profile", handlers.CSRFMiddleware(handlers.APIUpdateProfile))
+	mux.HandleFunc("POST /api/avatar", handlers.CSRFMiddleware(handlers.APIUploadAvatar))
+	mux.HandleFunc("/api/notifications", handlers.APIGetNotifications)
+	mux.HandleFunc("/api/notifications/unread", handlers.APIUnreadCount)
+	mux.HandleFunc("POST /api/notifications/{id}/read", handlers.CSRFMiddleware(handlers.APIMarkNotificationRead))
+	mux.HandleFunc("POST /api/notifications/read-all", handlers.CSRFMiddleware(handlers.APIMarkAllNotificationsRead))
+
+	mux.HandleFunc("POST /login", handlers.RateLimitLogin(handlers.Login))
+	mux.HandleFunc("POST /register", handlers.RateLimitLogin(handlers.Register))
+	mux.HandleFunc("/logout", handlers.Logout)
+	mux.HandleFunc("POST /upload", handlers.CSRFMiddleware(handlers.Upload))
+	mux.HandleFunc("POST /photo/{id}/delete", handlers.CSRFMiddleware(handlers.DeletePhoto))
+	mux.HandleFunc("POST /photo/{id}/favorite", handlers.CSRFMiddleware(handlers.ToggleFavorite))
+	mux.HandleFunc("/export", handlers.ExportPhotos)
+
+	mux.Handle("/", &SPAHandler{staticPath: reactDist, indexPath: indexPath})
+
+	handler := chain(mux,
+		middleware.Recovery,
+		middleware.RequestID,
+		middleware.Logging,
+		metrics.Middleware,
+		middleware.Tracing,
+	)
+
+	logging.Info("Server starting", "addr", addr)
+	if err := http.ListenAndServe(addr, handler); err != nil {
+		logging.Error("Server failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func startTemplateServer(addr, staticDir string) {
+	if err := handlers.InitTemplates(); err != nil {
+		logging.Error("Failed to init templates", "error", err)
+		os.Exit(1)
+	}
+
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/healthz", handlers.Healthz)
+	mux.HandleFunc("/readyz", handlers.Readyz)
+	mux.HandleFunc("/metrics", metrics.Handler)
+
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
+	mux.HandleFunc("/api/photos", handlers.APIGetPhotos)
+	mux.HandleFunc("/api/photo/{id}", handlers.APIGetPhoto)
+	mux.HandleFunc("/api/photo/{id}/favorite", handlers.CSRFMiddleware(handlers.APIToggleFavorite))
+	mux.HandleFunc("/api/photo/{id}/like", handlers.CSRFMiddleware(handlers.APIToggleLike))
+	mux.HandleFunc("/api/photo/{id}/likers", handlers.APIGetLikers)
+	mux.HandleFunc("/api/photo/{id}/comments", handlers.APIGetComments)
+	mux.HandleFunc("/api/me", handlers.APIGetMe)
+	mux.HandleFunc("/api/nuis", handlers.APIGetNuis)
+	mux.HandleFunc("/api/user/{username}", handlers.APIGetUser)
+	mux.HandleFunc("/api/user/{username}/photos", handlers.APIGetUserPhotos)
+
+	mux.HandleFunc("/", handlers.Home)
+	mux.HandleFunc("/login", handlers.RateLimitLogin(handlers.Login))
+	mux.HandleFunc("/register", handlers.RateLimitLogin(handlers.Register))
+	mux.HandleFunc("/logout", handlers.Logout)
+	mux.HandleFunc("/upload", handlers.CSRFMiddleware(handlers.Upload))
+	mux.HandleFunc("/photo/{id}/delete", handlers.CSRFMiddleware(handlers.DeletePhoto))
+	mux.HandleFunc("/photo/{id}/favorite", handlers.CSRFMiddleware(handlers.ToggleFavorite))
+	mux.HandleFunc("/export", handlers.ExportPhotos)
+	mux.HandleFunc("/nui/{name}", handlers.NuiProfile)
+	mux.HandleFunc("/user/{username}", handlers.UserProfile)
+	mux.HandleFunc("/favorites", handlers.Favorites)
+	mux.HandleFunc("/photo/{id}", handlers.ViewPhoto)
+	mux.HandleFunc("/photo/{id}/edit", handlers.CSRFMiddleware(handlers.EditPhoto))
+	mux.HandleFunc("/albums", handlers.ListAlbums)
+	mux.HandleFunc("/albums/new", handlers.CSRFMiddleware(handlers.CreateAlbum))
+	mux.HandleFunc("/album/{id}", handlers.ViewAlbum)
+	mux.HandleFunc("/album/{id}/delete", handlers.CSRFMiddleware(handlers.DeleteAlbum))
+
+	handler := chain(mux,
+		middleware.Recovery,
+		middleware.RequestID,
+		middleware.Logging,
+		metrics.Middleware,
+		middleware.Tracing,
+	)
+
+	logging.Info("Server starting", "addr", addr)
+	if err := http.ListenAndServe(addr, handler); err != nil {
+		logging.Error("Server failed", "error", err)
+		os.Exit(1)
 	}
 }

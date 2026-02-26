@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"time"
 
 	"nuistagram/internal/cache"
 	"nuistagram/internal/database"
@@ -29,7 +30,13 @@ func SetupTestServer(mux *http.ServeMux) (*TestServer, error) {
 	}
 
 	dbPath := filepath.Join(tmpDir, "test.db")
-	if err := database.Init(dbPath); err != nil {
+	pool := database.PoolConfig{
+		MaxOpenConns:    10,
+		MaxIdleConns:    5,
+		ConnMaxLifetime: time.Hour,
+		ConnMaxIdleTime: 10 * time.Minute,
+	}
+	if err := database.Init(dbPath, pool); err != nil {
 		return nil, err
 	}
 

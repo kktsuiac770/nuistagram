@@ -1,0 +1,30 @@
+# NUIstagram Configuration
+# Copy this file to config.yaml and customize as needed
+# Environment variables (PORT, DB_PATH, SECURE_COOKIE) override these values
+
+server:
+  # Port the server listens on (default: 8080)
+  # Override with: PORT=8080
+  port: 8080
+
+database:
+  # Path to SQLite database file (default: data/nuistagram.db)
+  # Override with: DB_PATH=data/nuistagram.db
+  path: data/nuistagram.db
+
+  # Connection pool settings
+  max_open_conns: 10    # Maximum open connections
+  max_idle_conns: 5     # Maximum idle connections
+  conn_max_lifetime: 1h # Maximum time a connection can be reused
+  conn_max_idle_time: 10m # Maximum time an idle connection is kept
+
+security:
+  # Set to true in production with HTTPS (default: false)
+  # Override with: SECURE_COOKIE=true
+  secure_cookie: false
+
+paths:
+  # React production build directory (default: frontend/dist)
+  react_dist: frontend/dist
+  # Static files directory (default: static)
+  static: static
