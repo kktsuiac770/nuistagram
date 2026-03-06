@@ -264,3 +264,22 @@ func APIGetUserPhotos(w http.ResponseWriter, r *http.Request) {
 
 	WriteJSON(w, 200, convertToResponse(result))
 }
+
+func APIGetFollowStatus(w http.ResponseWriter, r *http.Request) {
+	username := r.PathValue("username")
+	currentUser := GetCurrentUser(r)
+
+	if currentUser == nil {
+		WriteJSON(w, 401, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	profileUser, err := Repos.Users.GetByUsername(username)
+	if err != nil {
+		WriteJSON(w, 404, map[string]string{"error": "user not found"})
+		return
+	}
+
+	isFollowing := Repos.Follows.IsFollowing(currentUser.ID, profileUser.ID)
+	WriteJSON(w, 200, map[string]bool{"is_following": isFollowing})
+}

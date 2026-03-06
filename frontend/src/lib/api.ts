@@ -227,6 +227,9 @@ export const api = {
   unfollowUser: (username: string) =>
     fetchWithCsrf<{ success: boolean }>(`/api/user/${encodeURIComponent(username)}/unfollow`, { method: 'POST' }),
   
+  getFollowStatus: (username: string) =>
+    fetchJson<{ is_following: boolean }>(`/api/user/${encodeURIComponent(username)}/follow-status`),
+  
   searchUsers: (query: string) =>
     fetchJson<User[]>(`/api/search/users?q=${encodeURIComponent(query)}`),
   

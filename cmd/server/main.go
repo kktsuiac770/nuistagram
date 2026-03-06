@@ -165,6 +165,7 @@ func startTemplateServer(addr, staticDir string) {
 	mux.HandleFunc("/api/nuis", handlers.APIGetNuis)
 	mux.HandleFunc("/api/user/{username}", handlers.APIGetUser)
 	mux.HandleFunc("/api/user/{username}/photos", handlers.APIGetUserPhotos)
+	mux.HandleFunc("/api/user/{username}/follow-status", handlers.APIGetFollowStatus)
 
 	mux.HandleFunc("/", handlers.Home)
 	mux.HandleFunc("/login", handlers.RateLimitLogin(handlers.Login))
