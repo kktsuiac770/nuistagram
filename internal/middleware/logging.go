@@ -3,7 +3,7 @@ package middleware
 import (
 	"log/slog"
 	"net/http"
-	"nuistagram/internal/logging"
+	"nuistagram/internal/monitoring/logging"
 	"time"
 )
 

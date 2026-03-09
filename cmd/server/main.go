@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"nuistagram/internal/config"
-	"nuistagram/internal/logging"
+	"nuistagram/internal/monitoring/logging"
 	"nuistagram/internal/server"
 	"os"
 )

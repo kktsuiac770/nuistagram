@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"net/http"
-	"nuistagram/internal/tracing"
+	"nuistagram/internal/monitoring/tracing"
 )
 
 func Tracing(next http.Handler) http.Handler {

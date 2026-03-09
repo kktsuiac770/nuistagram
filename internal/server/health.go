@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"nuistagram/internal/database"
-	"nuistagram/internal/metrics"
 )
 
 func (s *Server) Healthz(w http.ResponseWriter, r *http.Request) {
@@ -44,5 +43,5 @@ func (s *Server) db() *sql.DB {
 func (s *Server) registerHealthRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/healthz", s.Healthz)
 	mux.HandleFunc("/readyz", s.Readyz)
-	mux.HandleFunc("/metrics", metrics.Handler)
+	// TODO: add metrics endpoint
 }

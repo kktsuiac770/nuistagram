@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"nuistagram/internal/logging"
+	"nuistagram/internal/monitoring/logging"
 	"runtime/debug"
 )
 
