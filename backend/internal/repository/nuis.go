@@ -43,7 +43,7 @@ func (r *nuiRepository) GetAll() ([]models.Nui, error) {
 
 func (r *nuiRepository) GetByUserID(userID int64) ([]models.Nui, error) {
 	rows, err := r.db.Query(
-		`SELECT id, name, user_id, created_at FROM nuis WHERE user_id = ? ORDER BY name`,
+		`SELECT id, name, user_id, created_at FROM nuis WHERE user_id = $1 ORDER BY name`,
 		userID,
 	)
 	if err != nil {
@@ -65,23 +65,23 @@ func (r *nuiRepository) GetByUserID(userID int64) ([]models.Nui, error) {
 func (r *nuiRepository) GetOrCreate(name string, userID int64) (int64, error) {
 	var nuiID int64
 	err := r.db.QueryRow(
-		"SELECT id FROM nuis WHERE name = ? AND user_id = ?",
+		"SELECT id FROM nuis WHERE name = $1 AND user_id = $2",
 		name, userID,
 	).Scan(&nuiID)
 	if err == nil {
 		return nuiID, nil
 	}
 
-	result, err := r.db.Exec(
-		"INSERT INTO nuis (name, user_id) VALUES (?, ?)",
+	err = r.db.QueryRow(
+		"INSERT INTO nuis (name, user_id) VALUES ($1, $2) RETURNING id",
 		name, userID,
-	)
+	).Scan(&nuiID)
 	if err != nil {
 		return 0, err
 	}
 
 	r.InvalidateCache()
-	return result.LastInsertId()
+	return nuiID, nil
 }
 
 func (r *nuiRepository) InvalidateCache() {

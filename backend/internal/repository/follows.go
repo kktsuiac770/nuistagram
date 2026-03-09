@@ -18,7 +18,7 @@ func (r *followRepository) Follow(followerID, followingID int64) error {
 		return nil
 	}
 	_, err := r.db.Exec(
-		"INSERT OR IGNORE INTO follows (follower_id, following_id) VALUES (?, ?)",
+		"INSERT INTO follows (follower_id, following_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
 		followerID, followingID,
 	)
 	return err
@@ -26,7 +26,7 @@ func (r *followRepository) Follow(followerID, followingID int64) error {
 
 func (r *followRepository) Unfollow(followerID, followingID int64) error {
 	_, err := r.db.Exec(
-		"DELETE FROM follows WHERE follower_id = ? AND following_id = ?",
+		"DELETE FROM follows WHERE follower_id = $1 AND following_id = $2",
 		followerID, followingID,
 	)
 	return err
@@ -35,7 +35,7 @@ func (r *followRepository) Unfollow(followerID, followingID int64) error {
 func (r *followRepository) IsFollowing(followerID, followingID int64) bool {
 	var count int
 	err := r.db.QueryRow(
-		"SELECT COUNT(*) FROM follows WHERE follower_id = ? AND following_id = ?",
+		"SELECT COUNT(*) FROM follows WHERE follower_id = $1 AND following_id = $2",
 		followerID, followingID,
 	).Scan(&count)
 	return err == nil && count > 0
@@ -46,9 +46,9 @@ func (r *followRepository) GetFollowers(userID int64, limit int) ([]models.User,
 		SELECT u.id, u.username, '', COALESCE(u.bio, ''), COALESCE(u.avatar, ''), u.created_at, 0
 		FROM users u
 		JOIN follows f ON u.id = f.follower_id
-		WHERE f.following_id = ?
+		WHERE f.following_id = $1
 		ORDER BY f.created_at DESC
-		LIMIT ?
+		LIMIT $2
 	`, userID, limit)
 	if err != nil {
 		return nil, err
@@ -63,9 +63,9 @@ func (r *followRepository) GetFollowing(userID int64, limit int) ([]models.User,
 		SELECT u.id, u.username, '', COALESCE(u.bio, ''), COALESCE(u.avatar, ''), u.created_at, 0
 		FROM users u
 		JOIN follows f ON u.id = f.following_id
-		WHERE f.follower_id = ?
+		WHERE f.follower_id = $1
 		ORDER BY f.created_at DESC
-		LIMIT ?
+		LIMIT $2
 	`, userID, limit)
 	if err != nil {
 		return nil, err
@@ -78,7 +78,7 @@ func (r *followRepository) GetFollowing(userID int64, limit int) ([]models.User,
 func (r *followRepository) GetFollowerCount(userID int64) (int, error) {
 	var count int
 	err := r.db.QueryRow(
-		"SELECT COUNT(*) FROM follows WHERE following_id = ?",
+		"SELECT COUNT(*) FROM follows WHERE following_id = $1",
 		userID,
 	).Scan(&count)
 	return count, err
@@ -87,7 +87,7 @@ func (r *followRepository) GetFollowerCount(userID int64) (int, error) {
 func (r *followRepository) GetFollowingCount(userID int64) (int, error) {
 	var count int
 	err := r.db.QueryRow(
-		"SELECT COUNT(*) FROM follows WHERE follower_id = ?",
+		"SELECT COUNT(*) FROM follows WHERE follower_id = $1",
 		userID,
 	).Scan(&count)
 	return count, err

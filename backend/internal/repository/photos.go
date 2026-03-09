@@ -10,26 +10,26 @@ import (
 
 const PhotosPerPage = 20
 
-func buildWordMatchConditions(tags []string) (string, []interface{}) {
+func buildWordMatchConditions(tags []string, startIdx int) (string, []interface{}) {
 	conditions := make([]string, len(tags))
 	args := make([]interface{}, len(tags))
 	for i, tag := range tags {
-		conditions[i] = "(' ' || LOWER(n.name) || ' ') LIKE ('% ' || LOWER(?) || ' %')"
-		args[i] = tag
+		conditions[i] = fmt.Sprintf("(' ' || LOWER(n.name) || ' ') LIKE $%d", startIdx+i)
+		args[i] = "% " + strings.ToLower(tag) + " %"
 	}
 	return strings.Join(conditions, " OR "), args
 }
 
-func buildAndExistsConditions(tags []string) (string, []interface{}) {
+func buildAndExistsConditions(tags []string, startIdx int) (string, []interface{}) {
 	conditions := make([]string, len(tags))
 	args := make([]interface{}, len(tags))
 	for i, tag := range tags {
 		conditions[i] = fmt.Sprintf(`EXISTS (
-			SELECT 1 FROM photo_nuis pn JOIN nuis n ON pn.nui_id = n.id 
-			WHERE pn.photo_id = p.id 
-			AND (' ' || LOWER(n.name) || ' ') LIKE ('%% ' || LOWER(?) || ' %%')
-		)`)
-		args[i] = tag
+			SELECT 1 FROM photo_nuis pn JOIN nuis n ON pn.nui_id = n.id
+			WHERE pn.photo_id = p.id
+			AND (' ' || LOWER(n.name) || ' ') LIKE $%d
+		)`, startIdx+i)
+		args[i] = "% " + strings.ToLower(tag) + " %"
 	}
 	return strings.Join(conditions, " AND "), args
 }
@@ -72,20 +72,22 @@ func (r *photoRepository) Search(tags []string, mode string, page int, currentUs
 func (r *photoRepository) countPhotos(tags []string, mode string, filterUserID int64, followingOnly bool, currentUserID int64) (int, error) {
 	var query string
 	var args []interface{}
+	argIdx := 1
 
 	followingJoin := ""
 	if followingOnly {
-		followingJoin = "JOIN follows f ON p.user_id = f.following_id AND f.follower_id = ?"
+		followingJoin = fmt.Sprintf("JOIN follows f ON p.user_id = f.following_id AND f.follower_id = $%d", argIdx)
 		args = append(args, currentUserID)
+		argIdx++
 	}
 
 	if filterUserID > 0 {
-		query = fmt.Sprintf(`SELECT COUNT(DISTINCT p.id) FROM photos p %s WHERE p.user_id = ?`, followingJoin)
+		query = fmt.Sprintf(`SELECT COUNT(DISTINCT p.id) FROM photos p %s WHERE p.user_id = $%d`, followingJoin, argIdx)
 		args = append(args, filterUserID)
 	} else if len(tags) == 0 {
 		query = fmt.Sprintf(`SELECT COUNT(DISTINCT p.id) FROM photos p %s`, followingJoin)
 	} else if mode == "and" {
-		conditions, condArgs := buildAndExistsConditions(tags)
+		conditions, condArgs := buildAndExistsConditions(tags, argIdx)
 		query = fmt.Sprintf(`
 			SELECT COUNT(DISTINCT p.id)
 			FROM photos p
@@ -93,19 +95,8 @@ func (r *photoRepository) countPhotos(tags []string, mode string, filterUserID i
 			WHERE %s
 		`, followingJoin, conditions)
 		args = append(args, condArgs...)
-
-		var count int
-		rows, err := r.db.Query(query, args...)
-		if err != nil {
-			return 0, err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			count++
-		}
-		return count, nil
 	} else {
-		conditions, condArgs := buildWordMatchConditions(tags)
+		conditions, condArgs := buildWordMatchConditions(tags, argIdx)
 		query = fmt.Sprintf(`
 			SELECT COUNT(DISTINCT p.id)
 			FROM photos p
@@ -144,32 +135,36 @@ func (r *photoRepository) getPhotosWithQuery(tags []string, mode string, page in
 
 	var query string
 	var args []interface{}
+	argIdx := 1
 
 	followingJoin := ""
 	if followingOnly {
-		followingJoin = "JOIN follows f ON p.user_id = f.following_id AND f.follower_id = ?"
+		followingJoin = fmt.Sprintf("JOIN follows f ON p.user_id = f.following_id AND f.follower_id = $%d", argIdx)
 		args = append(args, currentUserID)
+		argIdx++
 	}
 
 	favoriteJoin := ""
 	favoriteSelect := "0"
 	if currentUserID > 0 {
-		favoriteJoin = "LEFT JOIN favorites fav ON p.id = fav.photo_id AND fav.user_id = ?"
+		favoriteJoin = fmt.Sprintf("LEFT JOIN favorites fav ON p.id = fav.photo_id AND fav.user_id = $%d", argIdx)
 		favoriteSelect = "CASE WHEN fav.photo_id IS NOT NULL THEN 1 ELSE 0 END"
 		args = append(args, currentUserID)
+		argIdx++
 	}
 
 	likeJoin := ""
 	likeSelect := "0"
 	if currentUserID > 0 {
-		likeJoin = "LEFT JOIN likes l ON p.id = l.photo_id AND l.user_id = ?"
+		likeJoin = fmt.Sprintf("LEFT JOIN likes l ON p.id = l.photo_id AND l.user_id = $%d", argIdx)
 		likeSelect = "CASE WHEN l.photo_id IS NOT NULL THEN 1 ELSE 0 END"
 		args = append(args, currentUserID)
+		argIdx++
 	}
 
 	baseSelect := fmt.Sprintf(`
 		SELECT DISTINCT p.id, p.filename, COALESCE(p.thumbnail, ''), p.user_id, p.description, p.taken_at, p.created_at,
-			(SELECT GROUP_CONCAT(n.name, ',') FROM nuis n JOIN photo_nuis pn ON n.id = pn.nui_id WHERE pn.photo_id = p.id) as nui_names,
+			(SELECT STRING_AGG(n.name, ',') FROM nuis n JOIN photo_nuis pn ON n.id = pn.nui_id WHERE pn.photo_id = p.id) as nui_names,
 			%s as is_favorite,
 			(SELECT COUNT(*) FROM likes WHERE photo_id = p.id) as like_count,
 			%s as is_liked,
@@ -183,26 +178,28 @@ func (r *photoRepository) getPhotosWithQuery(tags []string, mode string, page in
 	`, favoriteSelect, likeSelect, followingJoin, favoriteJoin, likeJoin)
 
 	if filterUserID > 0 {
-		query = fmt.Sprintf(`%s WHERE p.user_id = ? ORDER BY p.created_at DESC LIMIT ? OFFSET ?`, baseSelect)
+		query = fmt.Sprintf(`%s WHERE p.user_id = $%d ORDER BY p.created_at DESC LIMIT $%d OFFSET $%d`, baseSelect, argIdx, argIdx+1, argIdx+2)
 		args = append(args, filterUserID, PhotosPerPage, offset)
 	} else if len(tags) == 0 {
-		query = fmt.Sprintf(`%s ORDER BY p.created_at DESC LIMIT ? OFFSET ?`, baseSelect)
+		query = fmt.Sprintf(`%s ORDER BY p.created_at DESC LIMIT $%d OFFSET $%d`, baseSelect, argIdx, argIdx+1)
 		args = append(args, PhotosPerPage, offset)
 	} else if mode == "and" {
-		conditions, condArgs := buildAndExistsConditions(tags)
-		query = fmt.Sprintf(`%s WHERE %s ORDER BY p.created_at DESC LIMIT ? OFFSET ?`, baseSelect, conditions)
+		conditions, condArgs := buildAndExistsConditions(tags, argIdx)
+		argIdx += len(tags)
+		query = fmt.Sprintf(`%s WHERE %s ORDER BY p.created_at DESC LIMIT $%d OFFSET $%d`, baseSelect, conditions, argIdx, argIdx+1)
 		args = append(args, condArgs...)
 		args = append(args, PhotosPerPage, offset)
 	} else {
-		conditions, condArgs := buildWordMatchConditions(tags)
+		conditions, condArgs := buildWordMatchConditions(tags, argIdx)
+		argIdx += len(tags)
 		query = fmt.Sprintf(`
 			%s
 			JOIN photo_nuis pn ON p.id = pn.photo_id
 			JOIN nuis n ON pn.nui_id = n.id
 			WHERE %s
 			ORDER BY p.created_at DESC
-			LIMIT ? OFFSET ?
-		`, baseSelect, conditions)
+			LIMIT $%d OFFSET $%d
+		`, baseSelect, conditions, argIdx, argIdx+1)
 		args = append(args, condArgs...)
 		args = append(args, PhotosPerPage, offset)
 	}
@@ -264,7 +261,7 @@ func (r *photoRepository) getFavoritePhotos(userID int64, page int) (*Pagination
 
 	var totalCount int
 	err := r.db.QueryRow(
-		`SELECT COUNT(*) FROM favorites WHERE user_id = ?`,
+		`SELECT COUNT(*) FROM favorites WHERE user_id = $1`,
 		userID,
 	).Scan(&totalCount)
 	if err != nil {
@@ -283,16 +280,16 @@ func (r *photoRepository) getFavoritePhotos(userID int64, page int) (*Pagination
 
 	query := `
 		SELECT p.id, p.filename, COALESCE(p.thumbnail, ''), p.user_id, p.description, p.taken_at, p.created_at,
-			(SELECT GROUP_CONCAT(n.name, ',') FROM nuis n JOIN photo_nuis pn ON n.id = pn.nui_id WHERE pn.photo_id = p.id) as nui_names,
+			(SELECT STRING_AGG(n.name, ',') FROM nuis n JOIN photo_nuis pn ON n.id = pn.nui_id WHERE pn.photo_id = p.id) as nui_names,
 			(SELECT COUNT(*) FROM likes WHERE photo_id = p.id) as like_count,
 			(SELECT COUNT(*) FROM comments WHERE photo_id = p.id) as comment_count,
 			u.username
 		FROM photos p
 		JOIN favorites f ON p.id = f.photo_id
 		JOIN users u ON p.user_id = u.id
-		WHERE f.user_id = ?
+		WHERE f.user_id = $1
 		ORDER BY f.created_at DESC
-		LIMIT ? OFFSET ?
+		LIMIT $2 OFFSET $3
 	`
 
 	rows, err := r.db.Query(query, userID, PhotosPerPage, offset)
@@ -354,7 +351,7 @@ func (r *photoRepository) GetByID(photoID int64, currentUserID int64) (*models.P
 			(SELECT COUNT(*) FROM comments WHERE photo_id = p.id) as comment_count
 		FROM photos p
 		JOIN users u ON p.user_id = u.id
-		WHERE p.id = ?
+		WHERE p.id = $1
 	`, photoID).Scan(&p.ID, &p.Filename, &p.Thumbnail, &p.UserID, &description, &takenAt, &p.CreatedAt, &username, &p.LikeCount, &p.CommentCount)
 
 	if err != nil {
@@ -385,7 +382,7 @@ func (r *photoRepository) GetForEdit(photoID int64, userID int64) (*models.Photo
 
 	err := r.db.QueryRow(`
 		SELECT id, filename, COALESCE(thumbnail, ''), user_id, description, taken_at, created_at
-		FROM photos WHERE id = ? AND user_id = ?
+		FROM photos WHERE id = $1 AND user_id = $2
 	`, photoID, userID).Scan(&p.ID, &p.Filename, &p.Thumbnail, &p.UserID, &description, &takenAt, &p.CreatedAt)
 
 	if err != nil {
@@ -404,30 +401,28 @@ func (r *photoRepository) GetForEdit(photoID int64, userID int64) (*models.Photo
 }
 
 func (r *photoRepository) Create(filename, thumbnail string, userID int64, description string, takenAt *time.Time) (int64, error) {
-	result, err := r.db.Exec(`
+	var id int64
+	err := r.db.QueryRow(`
 		INSERT INTO photos (filename, thumbnail, user_id, description, taken_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, filename, thumbnail, userID, description, takenAt)
-	if err != nil {
-		return 0, err
-	}
-	return result.LastInsertId()
+		VALUES ($1, $2, $3, $4, $5) RETURNING id
+	`, filename, thumbnail, userID, description, takenAt).Scan(&id)
+	return id, err
 }
 
 func (r *photoRepository) Update(photoID int64, userID int64, description string, takenAt *time.Time) error {
 	_, err := r.db.Exec(`
-		UPDATE photos SET description = ?, taken_at = ? WHERE id = ? AND user_id = ?
+		UPDATE photos SET description = $1, taken_at = $2 WHERE id = $3 AND user_id = $4
 	`, description, takenAt, photoID, userID)
 	return err
 }
 
 func (r *photoRepository) Delete(photoID int64) error {
-	_, err := r.db.Exec("DELETE FROM photos WHERE id = ?", photoID)
+	_, err := r.db.Exec("DELETE FROM photos WHERE id = $1", photoID)
 	return err
 }
 
 func (r *photoRepository) GetFilenamesByUser(userID int64) ([]string, error) {
-	rows, err := r.db.Query(`SELECT filename FROM photos WHERE user_id = ?`, userID)
+	rows, err := r.db.Query(`SELECT filename FROM photos WHERE user_id = $1`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -448,7 +443,7 @@ func (r *photoRepository) getNuiNamesForPhoto(photoID int64) ([]string, error) {
 	rows, err := r.db.Query(`
 		SELECT n.name FROM nuis n
 		JOIN photo_nuis pn ON n.id = pn.nui_id
-		WHERE pn.photo_id = ?
+		WHERE pn.photo_id = $1
 		ORDER BY n.name
 	`, photoID)
 	if err != nil {
@@ -470,7 +465,7 @@ func (r *photoRepository) getNuiNamesForPhoto(photoID int64) ([]string, error) {
 func (r *photoRepository) isPhotoFavorited(photoID, userID int64) bool {
 	var count int
 	err := r.db.QueryRow(
-		`SELECT COUNT(*) FROM favorites WHERE photo_id = ? AND user_id = ?`,
+		`SELECT COUNT(*) FROM favorites WHERE photo_id = $1 AND user_id = $2`,
 		photoID, userID,
 	).Scan(&count)
 	return err == nil && count > 0
@@ -479,7 +474,7 @@ func (r *photoRepository) isPhotoFavorited(photoID, userID int64) bool {
 func (r *photoRepository) isPhotoLiked(photoID, userID int64) bool {
 	var count int
 	err := r.db.QueryRow(
-		`SELECT COUNT(*) FROM likes WHERE photo_id = ? AND user_id = ?`,
+		`SELECT COUNT(*) FROM likes WHERE photo_id = $1 AND user_id = $2`,
 		photoID, userID,
 	).Scan(&count)
 	return err == nil && count > 0
@@ -525,20 +520,20 @@ func (r *photoRepository) GetOwner(photoID int64) (string, string, int64, error)
 	var filename, thumbnail string
 	var userID int64
 	err := r.db.QueryRow(
-		"SELECT filename, COALESCE(thumbnail, ''), user_id FROM photos WHERE id = ?",
+		"SELECT filename, COALESCE(thumbnail, ''), user_id FROM photos WHERE id = $1",
 		photoID,
 	).Scan(&filename, &thumbnail, &userID)
 	return filename, thumbnail, userID, err
 }
 
 func (r *photoRepository) SetNuis(photoID int64, nuiIDs []int64) error {
-	_, err := r.db.Exec("DELETE FROM photo_nuis WHERE photo_id = ?", photoID)
+	_, err := r.db.Exec("DELETE FROM photo_nuis WHERE photo_id = $1", photoID)
 	if err != nil {
 		return err
 	}
 	for _, nuiID := range nuiIDs {
 		_, err := r.db.Exec(
-			"INSERT OR IGNORE INTO photo_nuis (photo_id, nui_id) VALUES (?, ?)",
+			"INSERT INTO photo_nuis (photo_id, nui_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
 			photoID, nuiID,
 		)
 		if err != nil {

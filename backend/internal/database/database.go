@@ -2,11 +2,10 @@ package database
 
 import (
 	"database/sql"
-	"os"
-	"path/filepath"
+	"fmt"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/lib/pq"
 )
 
 type PoolConfig struct {
@@ -16,13 +15,12 @@ type PoolConfig struct {
 	ConnMaxIdleTime time.Duration
 }
 
-func Init(dbPath string, pool PoolConfig) (*sql.DB, error) {
-	dir := filepath.Dir(dbPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return nil, err
+func Init(databaseURL string, pool PoolConfig) (*sql.DB, error) {
+	if databaseURL == "" {
+		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
 
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("postgres", databaseURL)
 	if err != nil {
 		return nil, err
 	}
@@ -33,6 +31,7 @@ func Init(dbPath string, pool PoolConfig) (*sql.DB, error) {
 	db.SetConnMaxIdleTime(pool.ConnMaxIdleTime)
 
 	if err := createTables(db); err != nil {
+		db.Close()
 		return nil, err
 	}
 
@@ -40,163 +39,116 @@ func Init(dbPath string, pool PoolConfig) (*sql.DB, error) {
 }
 
 func createTables(db *sql.DB) error {
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS users (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS users (
+			id BIGSERIAL PRIMARY KEY,
 			username TEXT UNIQUE NOT NULL,
 			password_hash TEXT NOT NULL,
 			bio TEXT DEFAULT '',
 			avatar TEXT DEFAULT '',
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		);
-
-		CREATE TABLE IF NOT EXISTS nuis (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			created_at TIMESTAMPTZ DEFAULT NOW()
+		)`,
+		`CREATE TABLE IF NOT EXISTS nuis (
+			id BIGSERIAL PRIMARY KEY,
 			name TEXT NOT NULL,
-			user_id INTEGER NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			user_id BIGINT NOT NULL,
+			created_at TIMESTAMPTZ DEFAULT NOW(),
 			UNIQUE(name, user_id),
 			FOREIGN KEY (user_id) REFERENCES users(id)
-		);
-
-		CREATE TABLE IF NOT EXISTS photos (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
+		)`,
+		`CREATE TABLE IF NOT EXISTS photos (
+			id BIGSERIAL PRIMARY KEY,
 			filename TEXT NOT NULL,
 			thumbnail TEXT,
-			user_id INTEGER NOT NULL,
+			user_id BIGINT NOT NULL,
 			description TEXT,
 			taken_at DATE,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			created_at TIMESTAMPTZ DEFAULT NOW(),
 			FOREIGN KEY (user_id) REFERENCES users(id)
-		);
-
-		CREATE TABLE IF NOT EXISTS photo_nuis (
-			photo_id INTEGER NOT NULL,
-			nui_id INTEGER NOT NULL,
+		)`,
+		`CREATE TABLE IF NOT EXISTS photo_nuis (
+			photo_id BIGINT NOT NULL,
+			nui_id BIGINT NOT NULL,
 			PRIMARY KEY (photo_id, nui_id),
 			FOREIGN KEY (photo_id) REFERENCES photos(id) ON DELETE CASCADE,
 			FOREIGN KEY (nui_id) REFERENCES nuis(id) ON DELETE CASCADE
-		);
-
-		CREATE TABLE IF NOT EXISTS favorites (
-			user_id INTEGER NOT NULL,
-			photo_id INTEGER NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		)`,
+		`CREATE TABLE IF NOT EXISTS favorites (
+			user_id BIGINT NOT NULL,
+			photo_id BIGINT NOT NULL,
+			created_at TIMESTAMPTZ DEFAULT NOW(),
 			PRIMARY KEY (user_id, photo_id),
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
 			FOREIGN KEY (photo_id) REFERENCES photos(id) ON DELETE CASCADE
-		);
-
-		CREATE TABLE IF NOT EXISTS likes (
-			user_id INTEGER NOT NULL,
-			photo_id INTEGER NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		)`,
+		`CREATE TABLE IF NOT EXISTS likes (
+			user_id BIGINT NOT NULL,
+			photo_id BIGINT NOT NULL,
+			created_at TIMESTAMPTZ DEFAULT NOW(),
 			PRIMARY KEY (user_id, photo_id),
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
 			FOREIGN KEY (photo_id) REFERENCES photos(id) ON DELETE CASCADE
-		);
-
-		CREATE TABLE IF NOT EXISTS comments (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			photo_id INTEGER NOT NULL,
-			user_id INTEGER NOT NULL,
+		)`,
+		`CREATE TABLE IF NOT EXISTS comments (
+			id BIGSERIAL PRIMARY KEY,
+			photo_id BIGINT NOT NULL,
+			user_id BIGINT NOT NULL,
 			content TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			created_at TIMESTAMPTZ DEFAULT NOW(),
 			FOREIGN KEY (photo_id) REFERENCES photos(id) ON DELETE CASCADE,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-		);
-
-		CREATE TABLE IF NOT EXISTS follows (
-			follower_id INTEGER NOT NULL,
-			following_id INTEGER NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		)`,
+		`CREATE TABLE IF NOT EXISTS follows (
+			follower_id BIGINT NOT NULL,
+			following_id BIGINT NOT NULL,
+			created_at TIMESTAMPTZ DEFAULT NOW(),
 			PRIMARY KEY (follower_id, following_id),
 			FOREIGN KEY (follower_id) REFERENCES users(id) ON DELETE CASCADE,
 			FOREIGN KEY (following_id) REFERENCES users(id) ON DELETE CASCADE
-		);
-
-		CREATE TABLE IF NOT EXISTS notifications (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			user_id INTEGER NOT NULL,
-			actor_id INTEGER NOT NULL,
+		)`,
+		`CREATE TABLE IF NOT EXISTS notifications (
+			id BIGSERIAL PRIMARY KEY,
+			user_id BIGINT NOT NULL,
+			actor_id BIGINT NOT NULL,
 			type TEXT NOT NULL,
-			photo_id INTEGER,
-			comment_id INTEGER,
+			photo_id BIGINT,
+			comment_id BIGINT,
 			read INTEGER DEFAULT 0,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			created_at TIMESTAMPTZ DEFAULT NOW(),
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
 			FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE CASCADE,
 			FOREIGN KEY (photo_id) REFERENCES photos(id) ON DELETE CASCADE,
 			FOREIGN KEY (comment_id) REFERENCES comments(id) ON DELETE CASCADE
-		);
-
-		CREATE TABLE IF NOT EXISTS albums (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
+		)`,
+		`CREATE TABLE IF NOT EXISTS albums (
+			id BIGSERIAL PRIMARY KEY,
 			name TEXT NOT NULL,
 			description TEXT,
-			user_id INTEGER NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			user_id BIGINT NOT NULL,
+			created_at TIMESTAMPTZ DEFAULT NOW(),
 			FOREIGN KEY (user_id) REFERENCES users(id)
-		);
-
-		CREATE TABLE IF NOT EXISTS album_photos (
-			album_id INTEGER NOT NULL,
-			photo_id INTEGER NOT NULL,
+		)`,
+		`CREATE TABLE IF NOT EXISTS album_photos (
+			album_id BIGINT NOT NULL,
+			photo_id BIGINT NOT NULL,
 			position INTEGER DEFAULT 0,
 			PRIMARY KEY (album_id, photo_id),
 			FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE,
 			FOREIGN KEY (photo_id) REFERENCES photos(id) ON DELETE CASCADE
-		);
-
-		CREATE INDEX IF NOT EXISTS idx_likes_photo_id ON likes(photo_id);
-		CREATE INDEX IF NOT EXISTS idx_comments_photo_id ON comments(photo_id);
-		CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
-		CREATE INDEX IF NOT EXISTS idx_follows_follower_id ON follows(follower_id);
-		CREATE INDEX IF NOT EXISTS idx_follows_following_id ON follows(following_id);
-	`)
-	if err != nil {
-		return err
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_likes_photo_id ON likes(photo_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_comments_photo_id ON comments(photo_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_follows_follower_id ON follows(follower_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_follows_following_id ON follows(following_id)`,
 	}
 
-	migrateToMultiNui(db)
-	migrateUserProfile(db)
-
-	return nil
-}
-
-func migrateToMultiNui(db *sql.DB) {
-	var columnExists int
-	err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('photos') WHERE name='nui_id'`).Scan(&columnExists)
-	if err != nil || columnExists == 0 {
-		return
-	}
-
-	rows, err := db.Query(`SELECT id, nui_id FROM photos WHERE nui_id IS NOT NULL`)
-	if err != nil {
-		return
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var photoID, nuiID int64
-		if err := rows.Scan(&photoID, &nuiID); err != nil {
-			continue
+	for _, stmt := range statements {
+		if _, err := db.Exec(stmt); err != nil {
+			return err
 		}
-		db.Exec(`INSERT OR IGNORE INTO photo_nuis (photo_id, nui_id) VALUES (?, ?)`, photoID, nuiID)
 	}
-
-	db.Exec(`ALTER TABLE photos DROP COLUMN nui_id`)
-}
-
-func migrateUserProfile(db *sql.DB) {
-	var bioExists int
-	err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('users') WHERE name='bio'`).Scan(&bioExists)
-	if err != nil || bioExists > 0 {
-		return
-	}
-
-	db.Exec(`ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''`)
-	db.Exec(`ALTER TABLE users ADD COLUMN avatar TEXT DEFAULT ''`)
+	return nil
 }
 
 func HealthCheck(db *sql.DB) error {

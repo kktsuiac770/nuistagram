@@ -14,14 +14,12 @@ func NewCommentRepository(db *sql.DB) CommentRepository {
 }
 
 func (r *commentRepository) Create(photoID, userID int64, content string) (int64, error) {
-	result, err := r.db.Exec(
-		"INSERT INTO comments (photo_id, user_id, content) VALUES (?, ?, ?)",
+	var id int64
+	err := r.db.QueryRow(
+		"INSERT INTO comments (photo_id, user_id, content) VALUES ($1, $2, $3) RETURNING id",
 		photoID, userID, content,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.LastInsertId()
+	).Scan(&id)
+	return id, err
 }
 
 func (r *commentRepository) GetByPhotoID(photoID int64, limit, offset int) ([]models.Comment, error) {
@@ -29,9 +27,9 @@ func (r *commentRepository) GetByPhotoID(photoID int64, limit, offset int) ([]mo
 		SELECT c.id, c.photo_id, c.user_id, c.content, c.created_at, u.username
 		FROM comments c
 		JOIN users u ON c.user_id = u.id
-		WHERE c.photo_id = ?
+		WHERE c.photo_id = $1
 		ORDER BY c.created_at DESC
-		LIMIT ? OFFSET ?
+		LIMIT $2 OFFSET $3
 	`, photoID, limit, offset)
 	if err != nil {
 		return nil, err
@@ -52,7 +50,7 @@ func (r *commentRepository) GetByPhotoID(photoID int64, limit, offset int) ([]mo
 func (r *commentRepository) GetCount(photoID int64) (int, error) {
 	var count int
 	err := r.db.QueryRow(
-		"SELECT COUNT(*) FROM comments WHERE photo_id = ?",
+		"SELECT COUNT(*) FROM comments WHERE photo_id = $1",
 		photoID,
 	).Scan(&count)
 	return count, err
@@ -60,7 +58,7 @@ func (r *commentRepository) GetCount(photoID int64) (int, error) {
 
 func (r *commentRepository) Delete(commentID, userID int64) error {
 	_, err := r.db.Exec(
-		"DELETE FROM comments WHERE id = ? AND user_id = ?",
+		"DELETE FROM comments WHERE id = $1 AND user_id = $2",
 		commentID, userID,
 	)
 	return err
@@ -72,7 +70,7 @@ func (r *commentRepository) GetByID(commentID int64) (*models.Comment, error) {
 		SELECT c.id, c.photo_id, c.user_id, c.content, c.created_at, u.username
 		FROM comments c
 		JOIN users u ON c.user_id = u.id
-		WHERE c.id = ?
+		WHERE c.id = $1
 	`, commentID).Scan(&c.ID, &c.PhotoID, &c.UserID, &c.Content, &c.CreatedAt, &c.Username)
 	if err != nil {
 		return nil, err

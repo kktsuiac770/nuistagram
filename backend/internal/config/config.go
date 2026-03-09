@@ -22,7 +22,7 @@ type ServerConfig struct {
 }
 
 type DatabaseConfig struct {
-	Path            string        `yaml:"path"`
+	URL             string        `yaml:"url"`
 	MaxOpenConns    int           `yaml:"max_open_conns"`
 	MaxIdleConns    int           `yaml:"max_idle_conns"`
 	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime"`
@@ -57,7 +57,7 @@ var defaultConfig = Config{
 		Port: 8080,
 	},
 	Database: DatabaseConfig{
-		Path:            "data/nuistagram.db",
+		URL:             "",
 		MaxOpenConns:    10,
 		MaxIdleConns:    5,
 		ConnMaxLifetime: time.Hour,
@@ -109,8 +109,8 @@ func applyEnvOverrides(cfg *Config) {
 		}
 	}
 
-	if dbPath := os.Getenv("DB_PATH"); dbPath != "" {
-		cfg.Database.Path = dbPath
+	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		cfg.Database.URL = dbURL
 	}
 
 	if secureCookie := os.Getenv("SECURE_COOKIE"); secureCookie != "" {
