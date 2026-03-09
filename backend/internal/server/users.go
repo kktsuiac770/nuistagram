@@ -2,9 +2,9 @@ package server
 
 import (
 	"bytes"
+	"image/jpeg"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -86,34 +86,34 @@ func (s *Server) APIUploadAvatar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	avatarDir := filepath.Join("static", "uploads", "avatars")
-	os.MkdirAll(avatarDir, 0755)
+	baseFilename := strconv.FormatInt(time.Now().UnixNano(), 36) + "_" + strconv.FormatInt(user.ID, 10)
 
-	ext := filepath.Ext(header.Filename)
-	filename := strconv.FormatInt(time.Now().UnixNano(), 36) + "_" + strconv.FormatInt(user.ID, 10) + ext
+	var avatarData []byte
+	var uploadName string
 
 	img, err := imaging.Decode(bytes.NewReader(fileData))
 	if err == nil {
 		img = imaging.Fill(img, 200, 200, imaging.Center, imaging.Lanczos)
-		if ext == ".jpg" || ext == ".jpeg" {
-			imaging.Save(img, filepath.Join(avatarDir, filename))
-		} else {
-			filename = filename[:len(filename)-len(ext)] + ".jpg"
-			imaging.Save(img, filepath.Join(avatarDir, filename))
-		}
+		var buf bytes.Buffer
+		jpeg.Encode(&buf, img, &jpeg.Options{Quality: 85})
+		avatarData = buf.Bytes()
+		uploadName = "avatars/" + baseFilename + ".jpg"
 	} else {
-		avatarPath := filepath.Join(avatarDir, filename)
-		dst, err := os.Create(avatarPath)
-		if err != nil {
-			jsonError(w, 500, "failed to save file")
-			return
+		avatarData = fileData
+		ext := filepath.Ext(header.Filename)
+		if ext == "" {
+			ext = ".jpg"
 		}
-		dst.Write(fileData)
-		dst.Close()
+		uploadName = "avatars/" + baseFilename + ext
 	}
 
-	avatarURL := "avatars/" + filename
-	err = s.Repos.Users.UpdateAvatar(user.ID, avatarURL)
+	result, err := s.Storage.Upload(r.Context(), avatarData, uploadName)
+	if err != nil {
+		jsonError(w, 500, "failed to upload avatar")
+		return
+	}
+
+	err = s.Repos.Users.UpdateAvatar(user.ID, result.URL)
 	if err != nil {
 		jsonError(w, 500, "internal error")
 		return
@@ -121,6 +121,6 @@ func (s *Server) APIUploadAvatar(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, 200, map[string]interface{}{
 		"success": true,
-		"avatar":  avatarURL,
+		"avatar":  result.URL,
 	})
 }

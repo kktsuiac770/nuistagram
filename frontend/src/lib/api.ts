@@ -302,8 +302,10 @@ export const api = {
     }),
   
   getImageUrl: (filename: string) =>
-    `/static/uploads/${filename}`,
-  
+    filename.startsWith('http') ? filename : `/static/uploads/${filename}`,
+
   getThumbnailUrl: (thumbnail: string) =>
-    thumbnail ? `/static/uploads/${thumbnail}` : '',
+    thumbnail
+      ? thumbnail.startsWith('http') ? thumbnail : `/static/uploads/${thumbnail}`
+      : '',
 }

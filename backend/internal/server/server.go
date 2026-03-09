@@ -4,6 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+
 	"nuistagram/internal/cache"
 	"nuistagram/internal/config"
 	"nuistagram/internal/database"
@@ -12,8 +15,7 @@ import (
 	"nuistagram/internal/monitoring/tracing"
 	"nuistagram/internal/repository"
 	"nuistagram/internal/session"
-	"os"
-	"path/filepath"
+	"nuistagram/internal/storage"
 )
 
 type Server struct {
@@ -21,6 +23,7 @@ type Server struct {
 	Sessions     *session.Manager
 	Config       *config.Config
 	DB           *sql.DB
+	Storage      storage.Storage
 	secureCookie bool
 }
 
@@ -52,11 +55,25 @@ func New(cfg *config.Config) (*Server, error) {
 	repos := repository.NewRepositories(db, c)
 	sessions := session.NewManager()
 
+	stor, err := storage.New(
+		cfg.Storage.Provider,
+		cfg.Storage.UploadDir,
+		cfg.Storage.CloudName,
+		cfg.Storage.APIKey,
+		cfg.Storage.APISecret,
+		cfg.Storage.Folder,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("init storage: %w", err)
+	}
+	logging.Info("Storage initialized", "provider", cfg.Storage.Provider)
+
 	return &Server{
 		Repos:        repos,
 		Sessions:     sessions,
 		Config:       cfg,
 		DB:           db,
+		Storage:      stor,
 		secureCookie: cfg.Security.SecureCookie,
 	}, nil
 }
