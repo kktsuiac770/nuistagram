@@ -1,4 +1,4 @@
-.PHONY: dev backend frontend build
+.PHONY: dev backend frontend build test test-backend test-frontend
 
 dev: ## Start backend and frontend concurrently
 	@mkdir -p backend/data backend/static/uploads
@@ -17,3 +17,11 @@ frontend: ## Start the frontend dev server
 build: ## Build backend binary and frontend bundle
 	cd backend && go build -o nuistagram ./cmd/server
 	cd frontend && npm run build
+
+test: test-backend test-frontend ## Run all tests
+
+test-backend: ## Run backend tests with race detector and coverage
+	cd backend && go test -v ./... -race -coverprofile=coverage.out
+
+test-frontend: ## Run frontend tests
+	cd frontend && npm run test:run
