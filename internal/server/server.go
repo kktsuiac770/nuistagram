@@ -74,17 +74,9 @@ func (s *Server) Run() error {
 	s.registerAPIRoutes(mux)
 	s.registerFormRoutes(mux)
 
-	if _, err := os.Stat(indexPath); err == nil {
-		logging.Info("Serving React app", "path", reactDist)
-		mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir(reactDist+"/assets"))))
-		mux.Handle("/", &spaHandler{staticPath: reactDist, indexPath: indexPath})
-	} else {
-		logging.Info("React dist not found, serving HTML templates")
-		if err := s.initTemplates(); err != nil {
-			return fmt.Errorf("init templates: %w", err)
-		}
-		s.registerTemplateRoutes(mux)
-	}
+	logging.Info("Serving React app", "path", reactDist)
+	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir(reactDist+"/assets"))))
+	mux.Handle("/", &spaHandler{staticPath: reactDist, indexPath: indexPath})
 
 	handler := middleware.Chain(mux,
 		middleware.Recovery,
