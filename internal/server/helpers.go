@@ -2,30 +2,10 @@ package server
 
 import (
 	"encoding/json"
-	"html/template"
 	"net/http"
 	"nuistagram/internal/models"
 	"strconv"
 )
-
-var templates *template.Template
-
-var funcMap = template.FuncMap{
-	"sub": func(a, b int) int { return a - b },
-	"add": func(a, b int) int { return a + b },
-}
-
-func (s *Server) initTemplates() error {
-	var err error
-	templates, err = template.New("").Funcs(funcMap).ParseGlob("templates/*.html")
-	return err
-}
-
-func renderTemplate(w http.ResponseWriter, name string, data interface{}) {
-	if err := templates.ExecuteTemplate(w, name, data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
