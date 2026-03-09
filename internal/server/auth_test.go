@@ -1,4 +1,4 @@
-package handlers
+package server
 
 import (
 	"database/sql"
@@ -13,30 +13,34 @@ import (
 	"nuistagram/internal/models"
 	"nuistagram/internal/repository"
 	"nuistagram/internal/repository/mocks"
+	"nuistagram/internal/session"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/crypto/bcrypt"
 )
 
-func setupAuthMocks() *mocks.MockRepositories {
+func setupTestServer() (*Server, *mocks.MockRepositories) {
 	mockRepos := mocks.NewMockRepositories()
-	Repos = &repository.Repositories{
-		Users:         mockRepos.Users,
-		Nuis:          mockRepos.Nuis,
-		Photos:        mockRepos.Photos,
-		Albums:        mockRepos.Albums,
-		Favorites:     mockRepos.Favorites,
-		Follows:       mockRepos.Follows,
-		Likes:         mockRepos.Likes,
-		Comments:      mockRepos.Comments,
-		Notifications: mockRepos.Notifications,
+	srv := &Server{
+		Repos: &repository.Repositories{
+			Users:         mockRepos.Users,
+			Nuis:          mockRepos.Nuis,
+			Photos:        mockRepos.Photos,
+			Albums:        mockRepos.Albums,
+			Favorites:     mockRepos.Favorites,
+			Follows:       mockRepos.Follows,
+			Likes:         mockRepos.Likes,
+			Comments:      mockRepos.Comments,
+			Notifications: mockRepos.Notifications,
+		},
+		Sessions: session.NewManager(),
 	}
-	return mockRepos
+	return srv, mockRepos
 }
 
 func TestRegister_Success(t *testing.T) {
-	mockRepos := setupAuthMocks()
+	srv, mockRepos := setupTestServer()
 
 	mockRepos.Users.On("Create", "testuser", mock.AnythingOfType("string")).Return(int64(1), nil)
 
@@ -48,7 +52,7 @@ func TestRegister_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
-	Register(w, req)
+	srv.Register(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var response map[string]bool
@@ -58,7 +62,7 @@ func TestRegister_Success(t *testing.T) {
 }
 
 func TestRegister_MissingFields(t *testing.T) {
-	setupAuthMocks()
+	srv, _ := setupTestServer()
 
 	tests := []struct {
 		name     string
@@ -80,7 +84,7 @@ func TestRegister_MissingFields(t *testing.T) {
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
 
-			Register(w, req)
+			srv.Register(w, req)
 
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 		})
@@ -88,7 +92,7 @@ func TestRegister_MissingFields(t *testing.T) {
 }
 
 func TestRegister_UsernameTooShort(t *testing.T) {
-	setupAuthMocks()
+	srv, _ := setupTestServer()
 
 	form := url.Values{}
 	form.Add("username", "ab")
@@ -98,13 +102,13 @@ func TestRegister_UsernameTooShort(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
-	Register(w, req)
+	srv.Register(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestRegister_WeakPassword(t *testing.T) {
-	setupAuthMocks()
+	srv, _ := setupTestServer()
 
 	tests := []struct {
 		name     string
@@ -126,7 +130,7 @@ func TestRegister_WeakPassword(t *testing.T) {
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
 
-			Register(w, req)
+			srv.Register(w, req)
 
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 		})
@@ -134,7 +138,7 @@ func TestRegister_WeakPassword(t *testing.T) {
 }
 
 func TestRegister_DuplicateUsername(t *testing.T) {
-	mockRepos := setupAuthMocks()
+	srv, mockRepos := setupTestServer()
 
 	mockRepos.Users.On("Create", "existinguser", mock.AnythingOfType("string")).Return(int64(0), sql.ErrNoRows)
 
@@ -146,14 +150,14 @@ func TestRegister_DuplicateUsername(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
-	Register(w, req)
+	srv.Register(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	mockRepos.Users.AssertExpectations(t)
 }
 
 func TestLogin_Success(t *testing.T) {
-	mockRepos := setupAuthMocks()
+	srv, mockRepos := setupTestServer()
 
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("Password123"), bcrypt.DefaultCost)
 	mockUser := &models.User{
@@ -173,7 +177,7 @@ func TestLogin_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
-	Login(w, req)
+	srv.Login(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var response map[string]bool
@@ -187,7 +191,7 @@ func TestLogin_Success(t *testing.T) {
 }
 
 func TestLogin_InvalidUsername(t *testing.T) {
-	mockRepos := setupAuthMocks()
+	srv, mockRepos := setupTestServer()
 
 	mockRepos.Users.On("GetByUsername", "nonexistent").Return(nil, sql.ErrNoRows)
 
@@ -199,14 +203,14 @@ func TestLogin_InvalidUsername(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
-	Login(w, req)
+	srv.Login(w, req)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 	mockRepos.Users.AssertExpectations(t)
 }
 
 func TestLogin_InvalidPassword(t *testing.T) {
-	mockRepos := setupAuthMocks()
+	srv, mockRepos := setupTestServer()
 
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("CorrectPass123"), bcrypt.DefaultCost)
 	mockUser := &models.User{
@@ -226,19 +230,21 @@ func TestLogin_InvalidPassword(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
-	Login(w, req)
+	srv.Login(w, req)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 	mockRepos.Users.AssertExpectations(t)
 }
 
 func TestLogout_Success(t *testing.T) {
+	srv, _ := setupTestServer()
+
 	req := httptest.NewRequest("POST", "/logout", nil)
-	sessionToken := CreateSession(1)
+	sessionToken := srv.Sessions.Create(1)
 	req.AddCookie(&http.Cookie{Name: "session", Value: sessionToken})
 	w := httptest.NewRecorder()
 
-	Logout(w, req)
+	srv.Logout(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var response map[string]bool

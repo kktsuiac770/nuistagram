@@ -39,6 +39,8 @@ type PhotoRepository interface {
 	Update(photoID int64, userID int64, description string, takenAt *time.Time) error
 	Delete(photoID int64) error
 	GetFilenamesByUser(userID int64) ([]string, error)
+	GetOwner(photoID int64) (filename, thumbnail string, userID int64, err error)
+	SetNuis(photoID int64, nuiIDs []int64) error
 }
 
 type AlbumRepository interface {
@@ -47,6 +49,7 @@ type AlbumRepository interface {
 	Create(name, description string, userID int64) (int64, error)
 	Delete(albumID int64) error
 	AddPhoto(albumID int64, photoID int64) error
+	GetOwnerID(albumID int64) (int64, error)
 }
 
 type FavoriteRepository interface {

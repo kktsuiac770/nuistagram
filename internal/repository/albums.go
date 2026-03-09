@@ -115,3 +115,9 @@ func (r *albumRepository) AddPhoto(albumID int64, photoID int64) error {
 	)
 	return err
 }
+
+func (r *albumRepository) GetOwnerID(albumID int64) (int64, error) {
+	var userID int64
+	err := r.db.QueryRow("SELECT user_id FROM albums WHERE id = ?", albumID).Scan(&userID)
+	return userID, err
+}

@@ -14,12 +14,12 @@ func Tracing(next http.Handler) http.Handler {
 		)
 		defer span.End()
 
-		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
+		rw := &ResponseWriter{ResponseWriter: w, Status: http.StatusOK}
 		next.ServeHTTP(rw, r.WithContext(ctx))
 
-		span.SetAttribute("http.status_code", rw.status)
-		if rw.status >= 400 {
-			span.SetStatus("ERROR", http.StatusText(rw.status))
+		span.SetAttribute("http.status_code", rw.Status)
+		if rw.Status >= 400 {
+			span.SetStatus("ERROR", http.StatusText(rw.Status))
 		} else {
 			span.SetStatus("OK", "")
 		}

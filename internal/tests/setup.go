@@ -10,8 +10,9 @@ import (
 
 	"nuistagram/internal/cache"
 	"nuistagram/internal/database"
-	"nuistagram/internal/handlers"
 	"nuistagram/internal/repository"
+	"nuistagram/internal/server"
+	"nuistagram/internal/session"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -19,6 +20,7 @@ import (
 type TestServer struct {
 	DB     *sql.DB
 	Repos  *repository.Repositories
+	Srv    *server.Server
 	Server *httptest.Server
 	Client *http.Client
 }
@@ -36,22 +38,28 @@ func SetupTestServer(mux *http.ServeMux) (*TestServer, error) {
 		ConnMaxLifetime: time.Hour,
 		ConnMaxIdleTime: 10 * time.Minute,
 	}
-	if err := database.Init(dbPath, pool); err != nil {
+	db, err := database.Init(dbPath, pool)
+	if err != nil {
 		return nil, err
 	}
 
 	c := cache.New(5 * 60 * 1000000000)
-	repos := repository.NewRepositories(database.DB, c)
+	repos := repository.NewRepositories(db, c)
 
-	handlers.Repos = repos
+	srv := &server.Server{
+		Repos:    repos,
+		Sessions: session.NewManager(),
+		DB:       db,
+	}
 
-	server := httptest.NewServer(mux)
-	client := server.Client()
+	httpServer := httptest.NewServer(mux)
+	client := httpServer.Client()
 
 	return &TestServer{
-		DB:     database.DB,
+		DB:     db,
 		Repos:  repos,
-		Server: server,
+		Srv:    srv,
+		Server: httpServer,
 		Client: client,
 	}, nil
 }
