@@ -2,3 +2,4 @@ nuistagram
 data
 static
 config.yaml
+.env

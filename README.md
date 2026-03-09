@@ -17,6 +17,7 @@ A photo sharing application with a Go backend and React frontend.
 ### Backend
 
 ```bash
+cd backend
 go build -o nuistagram ./cmd/server
 ./nuistagram
 ```
