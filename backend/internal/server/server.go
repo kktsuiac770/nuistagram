@@ -45,7 +45,7 @@ func New(cfg *config.Config) (*Server, error) {
 		ConnMaxIdleTime: cfg.Database.ConnMaxIdleTime,
 	}
 
-	db, err := database.Init(cfg.Database.Path, pool)
+	db, err := database.Init(cfg.Database.URL, pool)
 	if err != nil {
 		return nil, fmt.Errorf("init database: %w", err)
 	}

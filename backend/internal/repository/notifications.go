@@ -18,14 +18,12 @@ func (r *notificationRepository) Create(userID, actorID int64, notifType string,
 		return 0, nil
 	}
 
-	result, err := r.db.Exec(`
+	var id int64
+	err := r.db.QueryRow(`
 		INSERT INTO notifications (user_id, actor_id, type, photo_id, comment_id)
-		VALUES (?, ?, ?, ?, ?)
-	`, userID, actorID, notifType, photoID, commentID)
-	if err != nil {
-		return 0, err
-	}
-	return result.LastInsertId()
+		VALUES ($1, $2, $3, $4, $5) RETURNING id
+	`, userID, actorID, notifType, photoID, commentID).Scan(&id)
+	return id, err
 }
 
 func (r *notificationRepository) GetByUserID(userID int64, limit, offset int) ([]models.Notification, error) {
@@ -34,9 +32,9 @@ func (r *notificationRepository) GetByUserID(userID int64, limit, offset int) ([
 			u.id, u.username, COALESCE(u.avatar, '')
 		FROM notifications n
 		JOIN users u ON n.actor_id = u.id
-		WHERE n.user_id = ?
+		WHERE n.user_id = $1
 		ORDER BY n.created_at DESC
-		LIMIT ? OFFSET ?
+		LIMIT $2 OFFSET $3
 	`, userID, limit, offset)
 	if err != nil {
 		return nil, err
@@ -73,7 +71,7 @@ func (r *notificationRepository) GetByUserID(userID int64, limit, offset int) ([
 func (r *notificationRepository) GetUnreadCount(userID int64) (int, error) {
 	var count int
 	err := r.db.QueryRow(
-		"SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read = 0",
+		"SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND read = 0",
 		userID,
 	).Scan(&count)
 	return count, err
@@ -81,7 +79,7 @@ func (r *notificationRepository) GetUnreadCount(userID int64) (int, error) {
 
 func (r *notificationRepository) MarkAsRead(notificationID, userID int64) error {
 	_, err := r.db.Exec(
-		"UPDATE notifications SET read = 1 WHERE id = ? AND user_id = ?",
+		"UPDATE notifications SET read = 1 WHERE id = $1 AND user_id = $2",
 		notificationID, userID,
 	)
 	return err
@@ -89,7 +87,7 @@ func (r *notificationRepository) MarkAsRead(notificationID, userID int64) error 
 
 func (r *notificationRepository) MarkAllAsRead(userID int64) error {
 	_, err := r.db.Exec(
-		"UPDATE notifications SET read = 1 WHERE user_id = ?",
+		"UPDATE notifications SET read = 1 WHERE user_id = $1",
 		userID,
 	)
 	return err

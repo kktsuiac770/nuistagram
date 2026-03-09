@@ -1,6 +1,6 @@
 # NUIstagram Configuration
 # Copy this file to config.yaml and customize as needed
-# Environment variables (PORT, DB_PATH, SECURE_COOKIE) override these values
+# Environment variables (PORT, DATABASE_URL, SECURE_COOKIE) override these values
 
 server:
   # Port the server listens on (default: 8080)
@@ -8,9 +8,9 @@ server:
   port: 8080
 
 database:
-  # Path to SQLite database file (default: data/nuistagram.db)
-  # Override with: DB_PATH=data/nuistagram.db
-  path: data/nuistagram.db
+  # PostgreSQL connection URL (required)
+  # Override with: DATABASE_URL=postgres://user:password@localhost:5432/nuistagram?sslmode=disable
+  url: ""
 
   # Connection pool settings
   max_open_conns: 10    # Maximum open connections

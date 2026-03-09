@@ -16,14 +16,14 @@ func NewLikeRepository(db *sql.DB) LikeRepository {
 func (r *likeRepository) Toggle(photoID, userID int64) (bool, error) {
 	if r.IsLiked(photoID, userID) {
 		_, err := r.db.Exec(
-			"DELETE FROM likes WHERE photo_id = ? AND user_id = ?",
+			"DELETE FROM likes WHERE photo_id = $1 AND user_id = $2",
 			photoID, userID,
 		)
 		return false, err
 	}
 
 	_, err := r.db.Exec(
-		"INSERT INTO likes (photo_id, user_id) VALUES (?, ?)",
+		"INSERT INTO likes (photo_id, user_id) VALUES ($1, $2)",
 		photoID, userID,
 	)
 	return true, err
@@ -32,7 +32,7 @@ func (r *likeRepository) Toggle(photoID, userID int64) (bool, error) {
 func (r *likeRepository) IsLiked(photoID, userID int64) bool {
 	var count int
 	err := r.db.QueryRow(
-		"SELECT COUNT(*) FROM likes WHERE photo_id = ? AND user_id = ?",
+		"SELECT COUNT(*) FROM likes WHERE photo_id = $1 AND user_id = $2",
 		photoID, userID,
 	).Scan(&count)
 	return err == nil && count > 0
@@ -41,7 +41,7 @@ func (r *likeRepository) IsLiked(photoID, userID int64) bool {
 func (r *likeRepository) GetLikeCount(photoID int64) (int, error) {
 	var count int
 	err := r.db.QueryRow(
-		"SELECT COUNT(*) FROM likes WHERE photo_id = ?",
+		"SELECT COUNT(*) FROM likes WHERE photo_id = $1",
 		photoID,
 	).Scan(&count)
 	return count, err
@@ -52,9 +52,9 @@ func (r *likeRepository) GetLikers(photoID int64, limit int) ([]models.User, err
 		SELECT u.id, u.username, '', COALESCE(u.bio, ''), COALESCE(u.avatar, ''), u.created_at, 0
 		FROM users u
 		JOIN likes l ON u.id = l.user_id
-		WHERE l.photo_id = ?
+		WHERE l.photo_id = $1
 		ORDER BY l.created_at DESC
-		LIMIT ?
+		LIMIT $2
 	`, photoID, limit)
 	if err != nil {
 		return nil, err

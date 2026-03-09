@@ -5,9 +5,10 @@ go 1.24.7
 require (
 	github.com/disintegration/imaging v1.6.2
 	github.com/dsoprea/go-exif/v3 v3.0.1
-	github.com/mattn/go-sqlite3 v1.14.34
+	github.com/lib/pq v1.11.2
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.48.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -21,5 +22,4 @@ require (
 	golang.org/x/image v0.0.0-20191009234506-e7c1f5e7dbb8 // indirect
 	golang.org/x/net v0.49.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
