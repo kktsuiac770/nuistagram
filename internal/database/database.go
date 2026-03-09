@@ -9,8 +9,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-var DB *sql.DB
-
 type PoolConfig struct {
 	MaxOpenConns    int
 	MaxIdleConns    int
@@ -18,28 +16,31 @@ type PoolConfig struct {
 	ConnMaxIdleTime time.Duration
 }
 
-func Init(dbPath string, pool PoolConfig) error {
+func Init(dbPath string, pool PoolConfig) (*sql.DB, error) {
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
+		return nil, err
 	}
 
-	var err error
-	DB, err = sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	DB.SetMaxOpenConns(pool.MaxOpenConns)
-	DB.SetMaxIdleConns(pool.MaxIdleConns)
-	DB.SetConnMaxLifetime(pool.ConnMaxLifetime)
-	DB.SetConnMaxIdleTime(pool.ConnMaxIdleTime)
+	db.SetMaxOpenConns(pool.MaxOpenConns)
+	db.SetMaxIdleConns(pool.MaxIdleConns)
+	db.SetConnMaxLifetime(pool.ConnMaxLifetime)
+	db.SetConnMaxIdleTime(pool.ConnMaxIdleTime)
 
-	return createTables()
+	if err := createTables(db); err != nil {
+		return nil, err
+	}
+
+	return db, nil
 }
 
-func createTables() error {
-	_, err := DB.Exec(`
+func createTables(db *sql.DB) error {
+	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS users (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			username TEXT UNIQUE NOT NULL,
@@ -157,20 +158,20 @@ func createTables() error {
 		return err
 	}
 
-	migrateToMultiNui()
-	migrateUserProfile()
+	migrateToMultiNui(db)
+	migrateUserProfile(db)
 
 	return nil
 }
 
-func migrateToMultiNui() {
+func migrateToMultiNui(db *sql.DB) {
 	var columnExists int
-	err := DB.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('photos') WHERE name='nui_id'`).Scan(&columnExists)
+	err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('photos') WHERE name='nui_id'`).Scan(&columnExists)
 	if err != nil || columnExists == 0 {
 		return
 	}
 
-	rows, err := DB.Query(`SELECT id, nui_id FROM photos WHERE nui_id IS NOT NULL`)
+	rows, err := db.Query(`SELECT id, nui_id FROM photos WHERE nui_id IS NOT NULL`)
 	if err != nil {
 		return
 	}
@@ -181,26 +182,26 @@ func migrateToMultiNui() {
 		if err := rows.Scan(&photoID, &nuiID); err != nil {
 			continue
 		}
-		DB.Exec(`INSERT OR IGNORE INTO photo_nuis (photo_id, nui_id) VALUES (?, ?)`, photoID, nuiID)
+		db.Exec(`INSERT OR IGNORE INTO photo_nuis (photo_id, nui_id) VALUES (?, ?)`, photoID, nuiID)
 	}
 
-	DB.Exec(`ALTER TABLE photos DROP COLUMN nui_id`)
+	db.Exec(`ALTER TABLE photos DROP COLUMN nui_id`)
 }
 
-func migrateUserProfile() {
+func migrateUserProfile(db *sql.DB) {
 	var bioExists int
-	err := DB.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('users') WHERE name='bio'`).Scan(&bioExists)
+	err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('users') WHERE name='bio'`).Scan(&bioExists)
 	if err != nil || bioExists > 0 {
 		return
 	}
 
-	DB.Exec(`ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''`)
-	DB.Exec(`ALTER TABLE users ADD COLUMN avatar TEXT DEFAULT ''`)
+	db.Exec(`ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''`)
+	db.Exec(`ALTER TABLE users ADD COLUMN avatar TEXT DEFAULT ''`)
 }
 
-func HealthCheck() error {
-	if DB == nil {
+func HealthCheck(db *sql.DB) error {
+	if db == nil {
 		return sql.ErrConnDone
 	}
-	return DB.Ping()
+	return db.Ping()
 }

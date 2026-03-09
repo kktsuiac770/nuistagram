@@ -520,3 +520,30 @@ func calculatePaginationPages(current, total int) []int {
 
 	return pages
 }
+
+func (r *photoRepository) GetOwner(photoID int64) (string, string, int64, error) {
+	var filename, thumbnail string
+	var userID int64
+	err := r.db.QueryRow(
+		"SELECT filename, COALESCE(thumbnail, ''), user_id FROM photos WHERE id = ?",
+		photoID,
+	).Scan(&filename, &thumbnail, &userID)
+	return filename, thumbnail, userID, err
+}
+
+func (r *photoRepository) SetNuis(photoID int64, nuiIDs []int64) error {
+	_, err := r.db.Exec("DELETE FROM photo_nuis WHERE photo_id = ?", photoID)
+	if err != nil {
+		return err
+	}
+	for _, nuiID := range nuiIDs {
+		_, err := r.db.Exec(
+			"INSERT OR IGNORE INTO photo_nuis (photo_id, nui_id) VALUES (?, ?)",
+			photoID, nuiID,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

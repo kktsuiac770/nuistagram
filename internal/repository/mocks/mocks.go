@@ -158,6 +158,16 @@ func (m *MockPhotoRepository) GetFilenamesByUser(userID int64) ([]string, error)
 	return args.Get(0).([]string), args.Error(1)
 }
 
+func (m *MockPhotoRepository) GetOwner(photoID int64) (string, string, int64, error) {
+	args := m.Called(photoID)
+	return args.String(0), args.String(1), args.Get(2).(int64), args.Error(3)
+}
+
+func (m *MockPhotoRepository) SetNuis(photoID int64, nuiIDs []int64) error {
+	args := m.Called(photoID, nuiIDs)
+	return args.Error(0)
+}
+
 type MockLikeRepository struct {
 	mock.Mock
 }
@@ -351,6 +361,11 @@ func (m *MockAlbumRepository) AddPhoto(albumID int64, photoID int64) error {
 	return args.Error(0)
 }
 
+func (m *MockAlbumRepository) GetOwnerID(albumID int64) (int64, error) {
+	args := m.Called(albumID)
+	return args.Get(0).(int64), args.Error(1)
+}
+
 func NewMockRepositories() *MockRepositories {
 	return &MockRepositories{
 		Users:         new(MockUserRepository),
@@ -375,18 +390,6 @@ type MockRepositories struct {
 	Nuis          *MockNuiRepository
 	Favorites     *MockFavoriteRepository
 	Albums        *MockAlbumRepository
-}
-
-func AssertExpectations(mocks *MockRepositories) {
-	mocks.Users.AssertExpectations(nil)
-	mocks.Photos.AssertExpectations(nil)
-	mocks.Likes.AssertExpectations(nil)
-	mocks.Follows.AssertExpectations(nil)
-	mocks.Comments.AssertExpectations(nil)
-	mocks.Notifications.AssertExpectations(nil)
-	mocks.Nuis.AssertExpectations(nil)
-	mocks.Favorites.AssertExpectations(nil)
-	mocks.Albums.AssertExpectations(nil)
 }
 
 var _ error = sql.ErrNoRows

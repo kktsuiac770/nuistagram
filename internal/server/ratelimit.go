@@ -1,4 +1,4 @@
-package handlers
+package server
 
 import (
 	"net/http"
@@ -93,14 +93,14 @@ func (rl *rateLimiter) retryAfter(ip string) int {
 
 var loginLimiter = newRateLimiter(5, time.Minute)
 
-func RateLimitLogin(next http.HandlerFunc) http.HandlerFunc {
+func rateLimitLogin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ip := getRealIP(r)
 
 		if !loginLimiter.allow(ip) {
 			retryAfter := loginLimiter.retryAfter(ip)
 			w.Header().Set("Retry-After", string(rune(retryAfter)))
-			http.Error(w, `{"error": "Too many login attempts. Please try again later."}`, http.StatusTooManyRequests)
+			jsonError(w, http.StatusTooManyRequests, "Too many login attempts. Please try again later.")
 			return
 		}
 

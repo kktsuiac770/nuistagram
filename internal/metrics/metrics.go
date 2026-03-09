@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"net/http"
+	"nuistagram/internal/middleware"
 	"strconv"
 	"sync"
 	"time"
@@ -120,16 +121,6 @@ func (m *Metrics) RecordDBQuery(duration time.Duration) {
 	m.dbQueryDuration.Observe(duration.Seconds())
 }
 
-type responseWriter struct {
-	http.ResponseWriter
-	status int
-}
-
-func (w *responseWriter) WriteHeader(code int) {
-	w.status = code
-	w.ResponseWriter.WriteHeader(code)
-}
-
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/metrics" {
@@ -141,10 +132,10 @@ func Middleware(next http.Handler) http.Handler {
 		defer M.DecInFlight()
 
 		start := time.Now()
-		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
+		rw := &middleware.ResponseWriter{ResponseWriter: w, Status: http.StatusOK}
 		next.ServeHTTP(rw, r)
 
-		M.RecordRequest(r.Method, r.URL.Path, rw.status, time.Since(start))
+		M.RecordRequest(r.Method, r.URL.Path, rw.Status, time.Since(start))
 	})
 }
 
