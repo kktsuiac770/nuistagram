@@ -9,8 +9,6 @@ import (
 	"image/jpeg"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -103,34 +101,25 @@ func (s *Server) Upload(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		ext := filepath.Ext(fileHeader.Filename)
 		baseFilename := strconv.FormatInt(time.Now().UnixNano(), 36) + "_" + strconv.FormatInt(user.ID, 10)
-		filename := baseFilename + ext
 
-		img, err := imaging.Decode(bytes.NewReader(fileData))
-		if err != nil {
-			dst, _ := os.Create(filepath.Join("static/uploads", filename))
-			dst.Write(fileData)
-			dst.Close()
+		// Process the main image.
+		img, imgErr := imaging.Decode(bytes.NewReader(fileData))
+		var photoData []byte
+		if imgErr == nil {
+			photoData, err = compressImage(img, 1920)
+			if err != nil {
+				photoData = fileData
+			}
 		} else {
-			compressedData, err := compressImage(img, 1920)
-			if err != nil {
-				compressedData = fileData
-			}
-
-			dst, err := os.Create(filepath.Join("static/uploads", filename))
-			if err != nil {
-				continue
-			}
-			dst.Write(compressedData)
-			dst.Close()
-
-			if strings.ToLower(ext) != ".jpg" && strings.ToLower(ext) != ".jpeg" {
-				jpgFilename := baseFilename + ".jpg"
-				os.Rename(filepath.Join("static/uploads", filename), filepath.Join("static/uploads", jpgFilename))
-				filename = jpgFilename
-			}
+			photoData = fileData
 		}
+
+		photoResult, err := s.Storage.Upload(r.Context(), photoData, baseFilename+".jpg")
+		if err != nil {
+			continue
+		}
+		filename := photoResult.URL
 
 		var takenAt *time.Time
 		if takenAtStr != "" {
@@ -139,23 +128,20 @@ func (s *Server) Upload(w http.ResponseWriter, r *http.Request) {
 				takenAt = &t
 			}
 		}
-
 		if takenAt == nil {
 			if exifTime := extractExifDate(fileData); exifTime != nil {
 				takenAt = exifTime
 			}
 		}
 
+		// Generate and upload thumbnail.
 		var thumbnailFilename string
-		img, err = imaging.Decode(bytes.NewReader(fileData))
-		if err == nil {
+		if imgErr == nil {
 			thumbData, err := generateThumbnail(img, 400)
 			if err == nil {
-				thumbnailFilename = "thumb_" + baseFilename + ".jpg"
-				thumbFile, err := os.Create(filepath.Join("static/uploads", thumbnailFilename))
+				thumbResult, err := s.Storage.Upload(r.Context(), thumbData, "thumb_"+baseFilename+".jpg")
 				if err == nil {
-					thumbFile.Write(thumbData)
-					thumbFile.Close()
+					thumbnailFilename = thumbResult.URL
 				}
 			}
 		}
@@ -217,9 +203,9 @@ func (s *Server) DeletePhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	os.Remove(filepath.Join("static/uploads", filename))
+	s.Storage.Delete(r.Context(), filename)
 	if thumbnail != "" {
-		os.Remove(filepath.Join("static/uploads", thumbnail))
+		s.Storage.Delete(r.Context(), thumbnail)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
@@ -267,33 +253,26 @@ func (s *Server) ExportPhotos(w http.ResponseWriter, r *http.Request) {
 	defer zipWriter.Close()
 
 	for _, filename := range filenames {
-		filePath := filepath.Join("static/uploads", filename)
-		file, err := os.Open(filePath)
+		data, err := s.Storage.FetchContent(r.Context(), filename)
 		if err != nil {
 			continue
 		}
 
-		info, err := file.Stat()
-		if err != nil {
-			file.Close()
-			continue
+		// Use the base name (after the last "/") for the zip entry.
+		zipName := filename
+		if idx := strings.LastIndex(filename, "/"); idx != -1 {
+			zipName = filename[idx+1:]
 		}
 
-		header, err := zip.FileInfoHeader(info)
-		if err != nil {
-			file.Close()
-			continue
+		header := &zip.FileHeader{
+			Name:     zipName,
+			Method:   zip.Deflate,
+			Modified: time.Now(),
 		}
-		header.Name = filename
-		header.Method = zip.Deflate
-
 		writer, err := zipWriter.CreateHeader(header)
 		if err != nil {
-			file.Close()
 			continue
 		}
-
-		io.Copy(writer, file)
-		file.Close()
+		writer.Write(data)
 	}
 }

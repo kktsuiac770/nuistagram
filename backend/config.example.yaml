@@ -28,3 +28,22 @@ paths:
   react_dist: frontend/dist
   # Static files directory (default: static)
   static: static
+
+storage:
+  # Storage backend: "local" (default) or "cloudinary"
+  # Override with: STORAGE_PROVIDER=cloudinary
+  provider: local
+
+  # Local storage — directory where uploads are saved (local only)
+  # Override with: STORAGE_UPLOAD_DIR=static/uploads
+  upload_dir: static/uploads
+
+  # Cloudinary credentials (required when provider = "cloudinary")
+  # Override with env vars: CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET
+  cloud_name: ""
+  api_key: ""
+  api_secret: ""
+
+  # Cloudinary folder prefix for all uploaded assets (default: nuistagram)
+  # Override with: CLOUDINARY_FOLDER=nuistagram
+  folder: nuistagram

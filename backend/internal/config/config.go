@@ -14,6 +14,7 @@ type Config struct {
 	Database    DatabaseConfig `yaml:"database"`
 	Security    SecurityConfig `yaml:"security"`
 	Paths       PathsConfig    `yaml:"paths"`
+	Storage     StorageConfig  `yaml:"storage"`
 }
 
 type ServerConfig struct {
@@ -37,6 +38,19 @@ type PathsConfig struct {
 	Static    string `yaml:"static"`
 }
 
+type StorageConfig struct {
+	// Provider selects the storage backend: "local" (default) or "cloudinary".
+	Provider string `yaml:"provider"`
+	// UploadDir is the local filesystem directory for uploads (local only).
+	UploadDir string `yaml:"upload_dir"`
+	// Cloudinary credentials (cloudinary provider only).
+	CloudName string `yaml:"cloud_name"`
+	APIKey    string `yaml:"api_key"`
+	APISecret string `yaml:"api_secret"`
+	// Folder is the Cloudinary path prefix for all uploaded assets.
+	Folder string `yaml:"folder"`
+}
+
 var defaultConfig = Config{
 	Environment: "development",
 	Server: ServerConfig{
@@ -55,6 +69,11 @@ var defaultConfig = Config{
 	Paths: PathsConfig{
 		ReactDist: "frontend/dist",
 		Static:    "static",
+	},
+	Storage: StorageConfig{
+		Provider:  "local",
+		UploadDir: "static/uploads",
+		Folder:    "nuistagram",
 	},
 }
 
@@ -98,5 +117,24 @@ func applyEnvOverrides(cfg *Config) {
 		if val, err := strconv.ParseBool(secureCookie); err == nil {
 			cfg.Security.SecureCookie = val
 		}
+	}
+
+	if provider := os.Getenv("STORAGE_PROVIDER"); provider != "" {
+		cfg.Storage.Provider = provider
+	}
+	if uploadDir := os.Getenv("STORAGE_UPLOAD_DIR"); uploadDir != "" {
+		cfg.Storage.UploadDir = uploadDir
+	}
+	if cloudName := os.Getenv("CLOUDINARY_CLOUD_NAME"); cloudName != "" {
+		cfg.Storage.CloudName = cloudName
+	}
+	if apiKey := os.Getenv("CLOUDINARY_API_KEY"); apiKey != "" {
+		cfg.Storage.APIKey = apiKey
+	}
+	if apiSecret := os.Getenv("CLOUDINARY_API_SECRET"); apiSecret != "" {
+		cfg.Storage.APISecret = apiSecret
+	}
+	if folder := os.Getenv("CLOUDINARY_FOLDER"); folder != "" {
+		cfg.Storage.Folder = folder
 	}
 }
