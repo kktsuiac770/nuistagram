@@ -21,6 +21,7 @@ spec:
       labels:
         app.kubernetes.io/name: nuistagram-backend
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: nuistagram-backend
           image: nuistagram-backend:latest
@@ -62,6 +63,11 @@ spec:
             readOnlyRootFilesystem: true
             runAsNonRoot: true
             runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
           volumeMounts:
             - name: tmp
               mountPath: /tmp

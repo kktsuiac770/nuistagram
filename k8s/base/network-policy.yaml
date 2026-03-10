@@ -1,0 +1,164 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# NetworkPolicies — enforce least-privilege traffic within the nuistagram namespace
+#
+# Traffic model:
+#   Internet → ingress-nginx → frontend pod:80 → (proxy) → backend pod:8080
+#                                                         → external (DB, Cloudinary)
+#
+# Default deny-all is applied first; each subsequent policy opens a specific path.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── 1. Default deny-all ───────────────────────────────────────────────────────
+# Blocks all ingress and egress for every pod in the namespace.
+# Only explicitly allowed traffic below is permitted.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: nuistagram
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# ── 2. Ingress-nginx → frontend ───────────────────────────────────────────────
+# Allows the nginx Ingress controller (in the ingress-nginx namespace) to reach
+# the frontend pods on port 80.  The ingress-nginx namespace must carry the
+# built-in "kubernetes.io/metadata.name" label (set automatically since k8s 1.21).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-frontend
+  namespace: nuistagram
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: nuistagram-frontend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# ── 3. Frontend → backend ─────────────────────────────────────────────────────
+# The frontend nginx container proxies /api, /login, /register, etc. to the
+# backend pod.  This policy allows that connection on the backend's container
+# port (8080).  Only pods in this namespace with the frontend label are allowed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-to-backend
+  namespace: nuistagram
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: nuistagram-backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: nuistagram-frontend
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# ── 4. Frontend egress ────────────────────────────────────────────────────────
+# Frontend pods need two egress paths:
+#   a) DNS resolution (kube-dns on port 53)
+#   b) Connections to backend pods so the nginx proxy_pass works
+#
+# Note: most CNI plugins evaluate egress NetworkPolicy against the post-DNAT
+# destination (the backend pod IP:8080), not the Service ClusterIP:80.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-egress
+  namespace: nuistagram
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: nuistagram-frontend
+  policyTypes:
+    - Egress
+  egress:
+    # DNS — required for nginx upstream hostname resolution
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Backend proxy traffic
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: nuistagram-backend
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# ── 5. Backend egress ─────────────────────────────────────────────────────────
+# Backend pods need outbound access to:
+#   a) DNS (kube-dns)
+#   b) Cloudinary API (HTTPS/443)
+#   c) Supabase / external PostgreSQL (5432 or 6543)
+#
+# RFC 1918 ranges are excluded from the ipBlock rule to prevent the backend from
+# reaching other cluster-internal pods via the external allow.  Traffic to other
+# pods within this namespace is already handled by targeted ingress policies.
+#
+# If your PostgreSQL host uses a private IP (e.g., a VPC peering setup), remove
+# its CIDR from the except list or add a dedicated ipBlock rule for it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-egress
+  namespace: nuistagram
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: nuistagram-backend
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # External HTTPS — Cloudinary (cdn.cloudinary.com, api.cloudinary.com)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+    # External PostgreSQL — Supabase direct (5432) and Supabase pooler (6543)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6543

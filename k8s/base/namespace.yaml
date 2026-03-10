@@ -4,3 +4,15 @@ metadata:
   name: nuistagram
   labels:
     app.kubernetes.io/name: nuistagram
+    # Pod Security Admission (k8s 1.23+)
+    # enforce=baseline: blocks known privilege-escalation vectors (hostNetwork,
+    #   hostPID, privileged containers, hostPath volumes, etc.)
+    # warn/audit=restricted: surfaces restricted-profile violations in logs and
+    #   warnings without hard-blocking, so you can track progress toward full
+    #   restricted enforcement once the frontend migrates off root/port-80 nginx.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
