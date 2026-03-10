@@ -104,7 +104,7 @@ func (s *Server) Upload(w http.ResponseWriter, r *http.Request) {
 		baseFilename := strconv.FormatInt(time.Now().UnixNano(), 36) + "_" + strconv.FormatInt(user.ID, 10)
 
 		// Process the main image.
-		img, imgErr := imaging.Decode(bytes.NewReader(fileData))
+		img, imgErr := imaging.Decode(bytes.NewReader(fileData), imaging.AutoOrientation(true))
 		var photoData []byte
 		if imgErr == nil {
 			photoData, err = compressImage(img, 1920)

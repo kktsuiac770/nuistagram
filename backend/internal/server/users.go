@@ -91,7 +91,7 @@ func (s *Server) APIUploadAvatar(w http.ResponseWriter, r *http.Request) {
 	var avatarData []byte
 	var uploadName string
 
-	img, err := imaging.Decode(bytes.NewReader(fileData))
+	img, err := imaging.Decode(bytes.NewReader(fileData), imaging.AutoOrientation(true))
 	if err == nil {
 		img = imaging.Fill(img, 200, 200, imaging.Center, imaging.Lanczos)
 		var buf bytes.Buffer
