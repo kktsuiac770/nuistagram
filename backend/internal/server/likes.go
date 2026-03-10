@@ -3,6 +3,8 @@ package server
 import (
 	"net/http"
 	"strconv"
+
+	"nuistagram/internal/monitoring/metrics"
 )
 
 func (s *Server) APIToggleLike(w http.ResponseWriter, r *http.Request) {
@@ -23,6 +25,7 @@ func (s *Server) APIToggleLike(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 500, "internal error")
 		return
 	}
+	metrics.LikesTotal.Inc()
 
 	if isLiked {
 		go func() {

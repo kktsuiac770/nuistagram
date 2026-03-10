@@ -7,6 +7,8 @@ import (
 	"regexp"
 
 	"golang.org/x/crypto/bcrypt"
+
+	"nuistagram/internal/monitoring/metrics"
 )
 
 const (
@@ -64,9 +66,11 @@ func (s *Server) Register(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := s.Repos.Users.Create(username, string(hash))
 	if err != nil {
+		metrics.RegistrationsTotal.WithLabelValues("failure").Inc()
 		jsonError(w, http.StatusBadRequest, "Username already exists")
 		return
 	}
+	metrics.RegistrationsTotal.WithLabelValues("success").Inc()
 
 	accessToken, err := s.JWT.GenerateAccessToken(userID, username)
 	if err != nil {
@@ -93,6 +97,7 @@ func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 
 	user, err := s.Repos.Users.GetByUsername(username)
 	if err == sql.ErrNoRows {
+		metrics.LoginsTotal.WithLabelValues("failure").Inc()
 		jsonError(w, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
@@ -102,9 +107,11 @@ func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		metrics.LoginsTotal.WithLabelValues("failure").Inc()
 		jsonError(w, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
+	metrics.LoginsTotal.WithLabelValues("success").Inc()
 
 	accessToken, err := s.JWT.GenerateAccessToken(user.ID, user.Username)
 	if err != nil {

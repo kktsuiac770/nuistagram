@@ -14,6 +14,7 @@ import (
 	"nuistagram/internal/config"
 	jwtpkg "nuistagram/internal/jwt"
 	"nuistagram/internal/models"
+	"nuistagram/internal/monitoring/metrics"
 	"nuistagram/internal/repository"
 	"nuistagram/internal/repository/mocks"
 
@@ -23,6 +24,7 @@ import (
 )
 
 func setupTestServer() (*Server, *mocks.MockRepositories) {
+	metrics.Init()
 	mockRepos := mocks.NewMockRepositories()
 	c := config.JWTConfig{
 		Secret:          "test-secret-key-for-unit-tests-32b",

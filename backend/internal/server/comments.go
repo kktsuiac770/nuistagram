@@ -3,6 +3,8 @@ package server
 import (
 	"net/http"
 	"strconv"
+
+	"nuistagram/internal/monitoring/metrics"
 )
 
 func (s *Server) APIGetComments(w http.ResponseWriter, r *http.Request) {
@@ -68,6 +70,7 @@ func (s *Server) APICreateComment(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 500, "internal error")
 		return
 	}
+	metrics.CommentsTotal.Inc()
 
 	go func() {
 		_, _, photoUserID, err := s.Repos.Photos.GetOwner(photoID)

@@ -4,7 +4,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"nuistagram/internal/database"
+	"nuistagram/internal/monitoring/metrics"
 )
 
 func (s *Server) Healthz(w http.ResponseWriter, r *http.Request) {
@@ -43,5 +47,5 @@ func (s *Server) db() *sql.DB {
 func (s *Server) registerHealthRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/healthz", s.Healthz)
 	mux.HandleFunc("/readyz", s.Readyz)
-	// TODO: add metrics endpoint
+	mux.Handle("/metrics", promhttp.HandlerFor(metrics.Registry, promhttp.HandlerOpts{}))
 }

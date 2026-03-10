@@ -1,0 +1,29 @@
+# ServiceMonitor tells the Prometheus Operator which service to scrape.
+# This CRD is installed by kube-prometheus-stack.
+#
+# The label `release: kube-prometheus-stack` must match the
+# serviceMonitorSelector configured in the Helm release (or use
+# serviceMonitorSelector: {} in prometheus-values.yaml to select all).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nuistagram-backend
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: nuistagram-backend
+    release: kube-prometheus-stack
+spec:
+  # Scrape Services in the nuistagram namespace.
+  namespaceSelector:
+    matchNames:
+      - nuistagram
+  # Match the backend Service by its label.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nuistagram-backend
+  endpoints:
+    - port: http          # matches the "http" port name in service.yaml
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      scheme: http

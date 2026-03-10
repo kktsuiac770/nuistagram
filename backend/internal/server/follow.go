@@ -2,6 +2,8 @@ package server
 
 import (
 	"net/http"
+
+	"nuistagram/internal/monitoring/metrics"
 )
 
 func (s *Server) APIFollowByUsername(w http.ResponseWriter, r *http.Request) {
@@ -28,6 +30,7 @@ func (s *Server) APIFollowByUsername(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 500, "internal error")
 		return
 	}
+	metrics.FollowsTotal.Inc()
 
 	s.Repos.Notifications.Create(targetUser.ID, user.ID, "follow", 0, 0)
 

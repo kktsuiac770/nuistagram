@@ -1,0 +1,39 @@
+# Helm values for kube-prometheus-stack.
+# Apply with:
+#   helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#     --namespace monitoring \
+#     --values k8s/monitoring/prometheus-values.yaml
+#
+# Or use: make kind-prometheus
+
+grafana:
+  enabled: true
+  adminPassword: "admin"   # Change in production via a Secret
+  service:
+    type: ClusterIP
+
+prometheus:
+  prometheusSpec:
+    # Allow ServiceMonitors from any namespace so the nuistagram ServiceMonitor
+    # (in monitoring ns) can target the backend Service (in nuistagram ns).
+    serviceMonitorNamespaceSelector: {}
+    serviceMonitorSelector: {}
+    podMonitorNamespaceSelector: {}
+    podMonitorSelector: {}
+    retention: 7d
+    resources:
+      requests:
+        memory: "400Mi"
+        cpu: "100m"
+      limits:
+        memory: "1Gi"
+        cpu: "500m"
+
+alertmanager:
+  enabled: false   # Enable and configure receivers in production
+
+kubeStateMetrics:
+  enabled: true
+
+nodeExporter:
+  enabled: true

@@ -15,6 +15,8 @@ import (
 
 	"github.com/disintegration/imaging"
 	exif "github.com/dsoprea/go-exif/v3"
+
+	"nuistagram/internal/monitoring/metrics"
 )
 
 func extractExifDate(data []byte) *time.Time {
@@ -196,6 +198,7 @@ func (s *Server) Upload(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
+		metrics.PhotosUploadedTotal.Inc()
 
 		var nuiIDs []int64
 		for _, nuiName := range nuiNames {

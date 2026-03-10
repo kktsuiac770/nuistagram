@@ -162,3 +162,29 @@ spec:
           port: 5432
         - protocol: TCP
           port: 6543
+
+---
+# ── 6. Prometheus → backend scraping ─────────────────────────────────────────
+# Allows Prometheus pods in the monitoring namespace to reach the backend on
+# port 8080 to collect metrics from GET /metrics.
+# The monitoring namespace must carry the kubernetes.io/metadata.name label
+# (set automatically in k8s 1.21+; the Makefile target enforces it explicitly).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: nuistagram
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: nuistagram-backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8080

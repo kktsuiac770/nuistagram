@@ -11,6 +11,7 @@ import (
 	jwtpkg "nuistagram/internal/jwt"
 	"nuistagram/internal/middleware"
 	"nuistagram/internal/monitoring/logging"
+	"nuistagram/internal/monitoring/metrics"
 	"nuistagram/internal/monitoring/tracing"
 	"nuistagram/internal/repository"
 	"nuistagram/internal/storage"
@@ -33,6 +34,7 @@ func New(cfg *config.Config) (*Server, error) {
 	logging.Init(env, nil)
 	logging.Info("Starting NUIstagram", "env", env)
 
+	metrics.Init()
 	tracing.Init("nuistagram", nil)
 
 	pool := database.PoolConfig{
@@ -86,6 +88,7 @@ func (s *Server) Run() error {
 	handler := middleware.Chain(mux,
 		middleware.Recovery,
 		middleware.RequestID,
+		middleware.Metrics,
 		middleware.Logging,
 		middleware.Tracing,
 	)
