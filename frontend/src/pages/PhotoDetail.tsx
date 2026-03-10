@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { useAuth } from '../contexts/Auth'
 import { useToast } from '../components/Toast'
-import { Heart, Trash2, X, ChevronLeft, ChevronRight, Edit, MessageCircle } from 'lucide-react'
+import { Heart, Trash2, X, Edit, MessageCircle } from 'lucide-react'
 
 export default function PhotoDetail() {
   const { id } = useParams<{ id: string }>()
@@ -22,11 +22,6 @@ export default function PhotoDetail() {
     enabled: !!id,
   })
 
-  const { data: allPhotos } = useQuery({
-    queryKey: ['photos', 1],
-    queryFn: () => api.getPhotos(1),
-  })
-
   const { data: comments } = useQuery({
     queryKey: ['comments', photoId],
     queryFn: () => api.getComments(photoId, 50),
@@ -37,7 +32,6 @@ export default function PhotoDetail() {
     mutationFn: () => api.toggleFavorite(photoId),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['photo', id] })
-      queryClient.invalidateQueries({ queryKey: ['photos'] })
       toast.success(data.is_favorite ? 'Added to favorites' : 'Removed from favorites')
     },
     onError: () => toast.error('Failed to update favorite'),
@@ -47,7 +41,6 @@ export default function PhotoDetail() {
     mutationFn: () => api.toggleLike(photoId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['photo', id] })
-      queryClient.invalidateQueries({ queryKey: ['photos'] })
     },
     onError: () => toast.error('Failed to update like'),
   })
@@ -81,22 +74,6 @@ export default function PhotoDetail() {
     onError: () => toast.error('Failed to delete photo'),
   })
 
-  const currentIndex = allPhotos?.photos?.findIndex(p => p.id === photoId) ?? -1
-  const hasPrev = currentIndex > 0
-  const hasNext = allPhotos?.photos && currentIndex < allPhotos.photos.length - 1
-
-  const goToPrev = useCallback(() => {
-    if (hasPrev && allPhotos?.photos) {
-      navigate(`/photo/${allPhotos.photos[currentIndex - 1].id}`, { replace: true })
-    }
-  }, [hasPrev, allPhotos, currentIndex, navigate])
-
-  const goToNext = useCallback(() => {
-    if (hasNext && allPhotos?.photos) {
-      navigate(`/photo/${allPhotos.photos[currentIndex + 1].id}`, { replace: true })
-    }
-  }, [hasNext, allPhotos, currentIndex, navigate])
-
   const handleClose = useCallback(() => {
     navigate('/', { replace: true })
   }, [navigate])
@@ -105,16 +82,12 @@ export default function PhotoDetail() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         handleClose()
-      } else if (e.key === 'ArrowLeft') {
-        goToPrev()
-      } else if (e.key === 'ArrowRight') {
-        goToNext()
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [goToNext, goToPrev, handleClose])
+  }, [handleClose])
 
   if (isLoading || !photo) {
     return (
@@ -132,24 +105,6 @@ export default function PhotoDetail() {
       >
         <X className="w-6 h-6" />
       </button>
-
-      {hasPrev && (
-        <button
-          onClick={goToPrev}
-          className="absolute left-4 top-1/2 -translate-y-1/2 p-2 text-white hover:bg-white/10 rounded-full z-10"
-        >
-          <ChevronLeft className="w-8 h-8" />
-        </button>
-      )}
-
-      {hasNext && (
-        <button
-          onClick={goToNext}
-          className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-white hover:bg-white/10 rounded-full z-10 md:right-96"
-        >
-          <ChevronRight className="w-8 h-8" />
-        </button>
-      )}
 
       <div className="flex flex-col md:flex-row max-w-5xl w-full h-full md:h-auto">
         <div className="flex-1 bg-black flex items-center justify-center">

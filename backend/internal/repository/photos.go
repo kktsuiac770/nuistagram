@@ -531,14 +531,19 @@ func (r *photoRepository) SetNuis(photoID int64, nuiIDs []int64) error {
 	if err != nil {
 		return err
 	}
-	for _, nuiID := range nuiIDs {
-		_, err := r.db.Exec(
-			"INSERT INTO photo_nuis (photo_id, nui_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-			photoID, nuiID,
-		)
-		if err != nil {
-			return err
-		}
+	if len(nuiIDs) == 0 {
+		return nil
 	}
-	return nil
+	placeholders := make([]string, len(nuiIDs))
+	args := make([]interface{}, len(nuiIDs)*2)
+	for i, nuiID := range nuiIDs {
+		placeholders[i] = fmt.Sprintf("($%d, $%d)", i*2+1, i*2+2)
+		args[i*2] = photoID
+		args[i*2+1] = nuiID
+	}
+	_, err = r.db.Exec(
+		"INSERT INTO photo_nuis (photo_id, nui_id) VALUES "+strings.Join(placeholders, ", ")+" ON CONFLICT DO NOTHING",
+		args...,
+	)
+	return err
 }

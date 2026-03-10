@@ -15,11 +15,13 @@ export default function Home() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['photos', page, selectedTags, feedType],
     queryFn: () => api.getPhotos(page, selectedTags.length > 0 ? selectedTags : undefined, user ? feedType : 'all'),
+    staleTime: 60_000,
   })
 
   const { data: nuis } = useQuery({
     queryKey: ['nuis'],
     queryFn: api.getNuis,
+    staleTime: 5 * 60_000,
   })
 
   const addTag = (tag: string) => {

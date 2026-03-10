@@ -47,16 +47,17 @@ export default function Notifications() {
       setFollowStatuses(newStatuses)
 
       const updateStatuses = async () => {
+        const followNotifs = notifications.filter(n => n.type === 'follow')
+        const results = await Promise.all(
+          followNotifs.map(n =>
+            api.getFollowStatus(n.actor.username)
+              .then(s => ({ username: n.actor.username, is_following: s.is_following }))
+              .catch(() => ({ username: n.actor.username, is_following: false }))
+          )
+        )
         const updatedStatuses: Record<string, boolean> = { ...newStatuses }
-        for (const notif of notifications) {
-          if (notif.type === 'follow') {
-            try {
-              const status = await api.getFollowStatus(notif.actor.username)
-              updatedStatuses[notif.actor.username] = status.is_following
-            } catch {
-              updatedStatuses[notif.actor.username] = false
-            }
-          }
+        for (const r of results) {
+          updatedStatuses[r.username] = r.is_following
         }
         setFollowStatuses(updatedStatuses)
       }

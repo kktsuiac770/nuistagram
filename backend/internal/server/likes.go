@@ -25,9 +25,9 @@ func (s *Server) APIToggleLike(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if isLiked {
-		photo, _, err := s.Repos.Photos.GetByID(photoID, user.ID)
-		if err == nil && photo.UserID != user.ID {
-			s.Repos.Notifications.Create(photo.UserID, user.ID, "like", photoID, 0)
+		_, _, photoUserID, err := s.Repos.Photos.GetOwner(photoID)
+		if err == nil && photoUserID != user.ID {
+			s.Repos.Notifications.Create(photoUserID, user.ID, "like", photoID, 0)
 		}
 	}
 
