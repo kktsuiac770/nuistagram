@@ -24,7 +24,7 @@ spec:
       containers:
         - name: nuistagram-frontend
           image: nuistagram-frontend:latest
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 80

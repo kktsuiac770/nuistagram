@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+images:
+  - name: nuistagram-backend
+    newName: ghcr.io/your-org/nuistagram-backend
+    newTag: latest
+  - name: nuistagram-frontend
+    newName: ghcr.io/your-org/nuistagram-frontend
+    newTag: latest
+
+patches:
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+    target:
+      kind: Deployment
+      name: nuistagram-backend
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+    target:
+      kind: Deployment
+      name: nuistagram-frontend

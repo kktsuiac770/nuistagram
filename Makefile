@@ -40,6 +40,7 @@ kind-create: ## Create the KinD cluster
 
 kind-ingress: ## Install nginx ingress controller and wait for it to be ready
 	kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.0/deploy/static/provider/kind/deploy.yaml
+	sleep 10
 	kubectl wait --namespace ingress-nginx \
 	  --for=condition=ready pod \
 	  --selector=app.kubernetes.io/component=controller \
@@ -51,15 +52,10 @@ kind-load: ## Build both Docker images and load them into the KinD cluster
 	kind load docker-image $(BACKEND_IMAGE):$(IMAGE_TAG) --name $(CLUSTER_NAME)
 	kind load docker-image $(FRONTEND_IMAGE):$(IMAGE_TAG) --name $(CLUSTER_NAME)
 
-kind-deploy: ## Apply all Kubernetes manifests
-	kubectl apply -f k8s/namespace.yaml
-	kubectl apply -f k8s/configmap.yaml
-	kubectl apply -f k8s/secret.yaml
-	kubectl apply -f k8s/deployment.yaml
-	kubectl apply -f k8s/service.yaml
-	kubectl apply -f k8s/frontend-deployment.yaml
-	kubectl apply -f k8s/frontend-service.yaml
-	kubectl apply -f k8s/ingress.yaml
+OVERLAY          ?= local
+
+kind-deploy: ## Apply Kubernetes manifests via Kustomize (OVERLAY=local|production)
+	kubectl apply -k k8s/overlays/$(OVERLAY)
 
 kind-up: kind-create kind-ingress kind-load kind-deploy ## Full cluster bring-up (create → ingress → images → deploy)
 
