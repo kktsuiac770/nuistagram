@@ -13,20 +13,44 @@ func NewLikeRepository(db *sql.DB) LikeRepository {
 	return &likeRepository{db: db}
 }
 
-func (r *likeRepository) Toggle(photoID, userID int64) (bool, error) {
-	if r.IsLiked(photoID, userID) {
-		_, err := r.db.Exec(
+func (r *likeRepository) Toggle(photoID, userID int64) (bool, int, error) {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return false, 0, err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(
+		"INSERT INTO likes (photo_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+		photoID, userID,
+	)
+	if err != nil {
+		return false, 0, err
+	}
+
+	inserted, _ := result.RowsAffected()
+	isLiked := inserted > 0
+
+	if !isLiked {
+		_, err = tx.Exec(
 			"DELETE FROM likes WHERE photo_id = $1 AND user_id = $2",
 			photoID, userID,
 		)
-		return false, err
+		if err != nil {
+			return false, 0, err
+		}
 	}
 
-	_, err := r.db.Exec(
-		"INSERT INTO likes (photo_id, user_id) VALUES ($1, $2)",
-		photoID, userID,
-	)
-	return true, err
+	var count int
+	err = tx.QueryRow("SELECT COUNT(*) FROM likes WHERE photo_id = $1", photoID).Scan(&count)
+	if err != nil {
+		return false, 0, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return false, 0, err
+	}
+	return isLiked, count, nil
 }
 
 func (r *likeRepository) IsLiked(photoID, userID int64) bool {

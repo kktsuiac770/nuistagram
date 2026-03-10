@@ -21,7 +21,7 @@ func (r *notificationRepository) Create(userID, actorID int64, notifType string,
 	var id int64
 	err := r.db.QueryRow(`
 		INSERT INTO notifications (user_id, actor_id, type, photo_id, comment_id)
-		VALUES ($1, $2, $3, $4, $5) RETURNING id
+		VALUES ($1, $2, $3, NULLIF($4, 0), NULLIF($5, 0)) RETURNING id
 	`, userID, actorID, notifType, photoID, commentID).Scan(&id)
 	return id, err
 }

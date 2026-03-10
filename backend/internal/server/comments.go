@@ -69,10 +69,12 @@ func (s *Server) APICreateComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, _, photoUserID, err := s.Repos.Photos.GetOwner(photoID)
-	if err == nil && photoUserID != user.ID {
-		s.Repos.Notifications.Create(photoUserID, user.ID, "comment", photoID, commentID)
-	}
+	go func() {
+		_, _, photoUserID, err := s.Repos.Photos.GetOwner(photoID)
+		if err == nil && photoUserID != user.ID {
+			s.Repos.Notifications.Create(photoUserID, user.ID, "comment", photoID, commentID)
+		}
+	}()
 
 	writeJSON(w, 200, map[string]interface{}{
 		"success":    true,

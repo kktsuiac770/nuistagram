@@ -18,20 +18,20 @@ func (s *Server) APIToggleLike(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	isLiked, err := s.Repos.Likes.Toggle(photoID, user.ID)
+	isLiked, likeCount, err := s.Repos.Likes.Toggle(photoID, user.ID)
 	if err != nil {
 		jsonError(w, 500, "internal error")
 		return
 	}
 
 	if isLiked {
-		_, _, photoUserID, err := s.Repos.Photos.GetOwner(photoID)
-		if err == nil && photoUserID != user.ID {
-			s.Repos.Notifications.Create(photoUserID, user.ID, "like", photoID, 0)
-		}
+		go func() {
+			_, _, photoUserID, err := s.Repos.Photos.GetOwner(photoID)
+			if err == nil && photoUserID != user.ID {
+				s.Repos.Notifications.Create(photoUserID, user.ID, "like", photoID, 0)
+			}
+		}()
 	}
-
-	likeCount, _ := s.Repos.Likes.GetLikeCount(photoID)
 
 	writeJSON(w, 200, map[string]interface{}{
 		"success":    true,

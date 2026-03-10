@@ -172,9 +172,9 @@ type MockLikeRepository struct {
 	mock.Mock
 }
 
-func (m *MockLikeRepository) Toggle(photoID, userID int64) (bool, error) {
+func (m *MockLikeRepository) Toggle(photoID, userID int64) (bool, int, error) {
 	args := m.Called(photoID, userID)
-	return args.Bool(0), args.Error(1)
+	return args.Bool(0), args.Int(1), args.Error(2)
 }
 
 func (m *MockLikeRepository) IsLiked(photoID, userID int64) bool {

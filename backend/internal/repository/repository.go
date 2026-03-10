@@ -68,7 +68,7 @@ type FollowRepository interface {
 }
 
 type LikeRepository interface {
-	Toggle(photoID, userID int64) (bool, error)
+	Toggle(photoID, userID int64) (isLiked bool, likeCount int, err error)
 	IsLiked(photoID, userID int64) bool
 	GetLikeCount(photoID int64) (int, error)
 	GetLikers(photoID int64, limit int) ([]models.User, error)
