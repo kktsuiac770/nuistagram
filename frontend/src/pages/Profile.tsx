@@ -25,7 +25,20 @@ export default function Profile() {
 
   const followMutation = useMutation({
     mutationFn: () => api.followUser(username!),
-    onSuccess: () => {
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['user', username] })
+      const prev = queryClient.getQueryData(['user', username])
+      queryClient.setQueryData(['user', username], (old: any) => old ? {
+        ...old,
+        is_following: true,
+        follower_count: old.follower_count + 1,
+      } : old)
+      return { prev }
+    },
+    onError: (_err, _vars, context) => {
+      queryClient.setQueryData(['user', username], context?.prev)
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['user', username] })
       queryClient.invalidateQueries({ queryKey: ['user', currentUser?.username] })
     },
@@ -33,7 +46,20 @@ export default function Profile() {
 
   const unfollowMutation = useMutation({
     mutationFn: () => api.unfollowUser(username!),
-    onSuccess: () => {
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['user', username] })
+      const prev = queryClient.getQueryData(['user', username])
+      queryClient.setQueryData(['user', username], (old: any) => old ? {
+        ...old,
+        is_following: false,
+        follower_count: Math.max(0, old.follower_count - 1),
+      } : old)
+      return { prev }
+    },
+    onError: (_err, _vars, context) => {
+      queryClient.setQueryData(['user', username], context?.prev)
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['user', username] })
       queryClient.invalidateQueries({ queryKey: ['user', currentUser?.username] })
     },

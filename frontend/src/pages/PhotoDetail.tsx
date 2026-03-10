@@ -39,10 +39,23 @@ export default function PhotoDetail() {
 
   const likeMutation = useMutation({
     mutationFn: () => api.toggleLike(photoId),
-    onSuccess: () => {
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['photo', id] })
+      const prev = queryClient.getQueryData(['photo', id])
+      queryClient.setQueryData(['photo', id], (old: any) => old ? {
+        ...old,
+        is_liked: !old.is_liked,
+        like_count: old.is_liked ? old.like_count - 1 : old.like_count + 1,
+      } : old)
+      return { prev }
+    },
+    onError: (_err, _vars, context) => {
+      queryClient.setQueryData(['photo', id], context?.prev)
+      toast.error('Failed to update like')
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['photo', id] })
     },
-    onError: () => toast.error('Failed to update like'),
   })
 
   const commentMutation = useMutation({
