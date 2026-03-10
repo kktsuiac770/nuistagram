@@ -99,6 +99,12 @@ func (s *Server) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	limits := s.Config.UsageLimits.LimitsForRole(user.Role)
+	if err := s.Limits.CheckAndIncrement(user.ID, "upload", limits.UploadsPerDay); err != nil {
+		jsonError(w, http.StatusTooManyRequests, "daily upload limit reached")
+		return
+	}
+
 	r.ParseMultipartForm(100 << 20)
 
 	files := r.MultipartForm.File["photos"]
@@ -286,6 +292,12 @@ func (s *Server) ExportPhotos(w http.ResponseWriter, r *http.Request) {
 	user := s.currentUser(r)
 	if user == nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	limits := s.Config.UsageLimits.LimitsForRole(user.Role)
+	if err := s.Limits.CheckAndIncrement(user.ID, "export", limits.ExportsPerDay); err != nil {
+		jsonError(w, http.StatusTooManyRequests, "daily export limit reached")
 		return
 	}
 

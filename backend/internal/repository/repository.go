@@ -17,6 +17,7 @@ type UserRepository interface {
 	Create(username, passwordHash string) (int64, error)
 	UpdateProfile(userID int64, bio string) error
 	UpdateAvatar(userID int64, avatar string) error
+	UpdateRole(userID int64, role string) error
 }
 
 type NuiRepository interface {

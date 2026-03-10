@@ -18,10 +18,10 @@ func (r *userRepository) GetByID(id int64) (*models.User, error) {
 	var u models.User
 	var bio, avatar sql.NullString
 	err := r.db.QueryRow(`
-		SELECT u.id, u.username, u.password_hash, COALESCE(u.bio, ''), COALESCE(u.avatar, ''), u.created_at,
+		SELECT u.id, u.username, u.password_hash, COALESCE(u.bio, ''), COALESCE(u.avatar, ''), u.role, u.created_at,
 			(SELECT COUNT(*) FROM photos WHERE user_id = u.id) as photo_count
 		FROM users u WHERE u.id = $1
-	`, id).Scan(&u.ID, &u.Username, &u.PasswordHash, &bio, &avatar, &u.CreatedAt, &u.PhotoCount)
+	`, id).Scan(&u.ID, &u.Username, &u.PasswordHash, &bio, &avatar, &u.Role, &u.CreatedAt, &u.PhotoCount)
 	if err != nil {
 		return nil, err
 	}
@@ -34,12 +34,12 @@ func (r *userRepository) GetByIDWithCounts(id int64, currentUserID int64) (*mode
 	var u models.User
 	var bio, avatar sql.NullString
 	err := r.db.QueryRow(`
-		SELECT u.id, u.username, u.password_hash, COALESCE(u.bio, ''), COALESCE(u.avatar, ''), u.created_at,
+		SELECT u.id, u.username, u.password_hash, COALESCE(u.bio, ''), COALESCE(u.avatar, ''), u.role, u.created_at,
 			(SELECT COUNT(*) FROM photos WHERE user_id = u.id) as photo_count,
 			(SELECT COUNT(*) FROM follows WHERE following_id = u.id) as follower_count,
 			(SELECT COUNT(*) FROM follows WHERE follower_id = u.id) as following_count
 		FROM users u WHERE u.id = $1
-	`, id).Scan(&u.ID, &u.Username, &u.PasswordHash, &bio, &avatar, &u.CreatedAt, &u.PhotoCount, &u.FollowerCount, &u.FollowingCount)
+	`, id).Scan(&u.ID, &u.Username, &u.PasswordHash, &bio, &avatar, &u.Role, &u.CreatedAt, &u.PhotoCount, &u.FollowerCount, &u.FollowingCount)
 	if err != nil {
 		return nil, err
 	}
@@ -55,10 +55,10 @@ func (r *userRepository) GetByUsername(username string) (*models.User, error) {
 	var u models.User
 	var bio, avatar sql.NullString
 	err := r.db.QueryRow(`
-		SELECT u.id, u.username, u.password_hash, COALESCE(u.bio, ''), COALESCE(u.avatar, ''), u.created_at,
+		SELECT u.id, u.username, u.password_hash, COALESCE(u.bio, ''), COALESCE(u.avatar, ''), u.role, u.created_at,
 			(SELECT COUNT(*) FROM photos WHERE user_id = u.id) as photo_count
 		FROM users u WHERE u.username = $1
-	`, username).Scan(&u.ID, &u.Username, &u.PasswordHash, &bio, &avatar, &u.CreatedAt, &u.PhotoCount)
+	`, username).Scan(&u.ID, &u.Username, &u.PasswordHash, &bio, &avatar, &u.Role, &u.CreatedAt, &u.PhotoCount)
 	if err != nil {
 		return nil, err
 	}
@@ -71,12 +71,12 @@ func (r *userRepository) GetByUsernameWithCounts(username string, currentUserID 
 	var u models.User
 	var bio, avatar sql.NullString
 	err := r.db.QueryRow(`
-		SELECT u.id, u.username, u.password_hash, COALESCE(u.bio, ''), COALESCE(u.avatar, ''), u.created_at,
+		SELECT u.id, u.username, u.password_hash, COALESCE(u.bio, ''), COALESCE(u.avatar, ''), u.role, u.created_at,
 			(SELECT COUNT(*) FROM photos WHERE user_id = u.id) as photo_count,
 			(SELECT COUNT(*) FROM follows WHERE following_id = u.id) as follower_count,
 			(SELECT COUNT(*) FROM follows WHERE follower_id = u.id) as following_count
 		FROM users u WHERE u.username = $1
-	`, username).Scan(&u.ID, &u.Username, &u.PasswordHash, &bio, &avatar, &u.CreatedAt, &u.PhotoCount, &u.FollowerCount, &u.FollowingCount)
+	`, username).Scan(&u.ID, &u.Username, &u.PasswordHash, &bio, &avatar, &u.Role, &u.CreatedAt, &u.PhotoCount, &u.FollowerCount, &u.FollowingCount)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +90,7 @@ func (r *userRepository) GetByUsernameWithCounts(username string, currentUserID 
 
 func (r *userRepository) GetAll() ([]models.User, error) {
 	rows, err := r.db.Query(`
-		SELECT u.id, u.username, u.password_hash, COALESCE(u.bio, ''), COALESCE(u.avatar, ''), u.created_at,
+		SELECT u.id, u.username, u.password_hash, COALESCE(u.bio, ''), COALESCE(u.avatar, ''), u.role, u.created_at,
 			(SELECT COUNT(*) FROM photos WHERE user_id = u.id) as photo_count
 		FROM users u ORDER BY u.username
 	`)
@@ -103,7 +103,7 @@ func (r *userRepository) GetAll() ([]models.User, error) {
 	for rows.Next() {
 		var u models.User
 		var bio, avatar sql.NullString
-		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &bio, &avatar, &u.CreatedAt, &u.PhotoCount); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &bio, &avatar, &u.Role, &u.CreatedAt, &u.PhotoCount); err != nil {
 			return nil, err
 		}
 		u.Bio = bio.String
@@ -115,7 +115,7 @@ func (r *userRepository) GetAll() ([]models.User, error) {
 
 func (r *userRepository) Search(query string, limit int) ([]models.User, error) {
 	rows, err := r.db.Query(`
-		SELECT u.id, u.username, u.password_hash, COALESCE(u.bio, ''), COALESCE(u.avatar, ''), u.created_at,
+		SELECT u.id, u.username, u.password_hash, COALESCE(u.bio, ''), COALESCE(u.avatar, ''), u.role, u.created_at,
 			(SELECT COUNT(*) FROM photos WHERE user_id = u.id) as photo_count
 		FROM users u
 		WHERE u.username ILIKE $1
@@ -131,7 +131,7 @@ func (r *userRepository) Search(query string, limit int) ([]models.User, error) 
 	for rows.Next() {
 		var u models.User
 		var bio, avatar sql.NullString
-		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &bio, &avatar, &u.CreatedAt, &u.PhotoCount); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &bio, &avatar, &u.Role, &u.CreatedAt, &u.PhotoCount); err != nil {
 			return nil, err
 		}
 		u.Bio = bio.String
@@ -157,6 +157,11 @@ func (r *userRepository) UpdateProfile(userID int64, bio string) error {
 
 func (r *userRepository) UpdateAvatar(userID int64, avatar string) error {
 	_, err := r.db.Exec("UPDATE users SET avatar = $1 WHERE id = $2", avatar, userID)
+	return err
+}
+
+func (r *userRepository) UpdateRole(userID int64, role string) error {
+	_, err := r.db.Exec("UPDATE users SET role = $1 WHERE id = $2", role, userID)
 	return err
 }
 

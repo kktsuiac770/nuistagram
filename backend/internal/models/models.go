@@ -8,6 +8,7 @@ type User struct {
 	PasswordHash   string
 	Bio            string
 	Avatar         string
+	Role           string
 	CreatedAt      time.Time
 	PhotoCount     int
 	FollowingCount int

@@ -15,6 +15,7 @@ import (
 	jwtpkg "nuistagram/internal/jwt"
 	"nuistagram/internal/models"
 	"nuistagram/internal/monitoring/metrics"
+	"nuistagram/internal/ratelimit"
 	"nuistagram/internal/repository"
 	"nuistagram/internal/repository/mocks"
 
@@ -44,7 +45,9 @@ func setupTestServer() (*Server, *mocks.MockRepositories) {
 			Comments:      mockRepos.Comments,
 			Notifications: mockRepos.Notifications,
 		},
-		JWT: jwtMgr,
+		JWT:    jwtMgr,
+		Config: &config.Config{},
+		Limits: ratelimit.New(),
 	}
 	return srv, mockRepos
 }

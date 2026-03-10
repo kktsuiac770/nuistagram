@@ -31,6 +31,11 @@ func (s *Server) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/notifications/read-all", s.APIMarkAllNotificationsRead)
 }
 
+// registerAdminRoutes registers admin-only API routes.
+func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /admin/users/{username}/role", s.APIUpdateUserRole)
+}
+
 // registerFormRoutes registers form-submission routes shared between both modes.
 func (s *Server) registerFormRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /login", s.Login)

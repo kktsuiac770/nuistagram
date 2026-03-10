@@ -13,6 +13,7 @@ import (
 	"nuistagram/internal/monitoring/logging"
 	"nuistagram/internal/monitoring/metrics"
 	"nuistagram/internal/monitoring/tracing"
+	"nuistagram/internal/ratelimit"
 	"nuistagram/internal/repository"
 	"nuistagram/internal/storage"
 )
@@ -23,6 +24,7 @@ type Server struct {
 	Config  *config.Config
 	DB      *sql.DB
 	Storage storage.Storage
+	Limits  *ratelimit.Limiter
 }
 
 func New(cfg *config.Config) (*Server, error) {
@@ -73,6 +75,7 @@ func New(cfg *config.Config) (*Server, error) {
 		Config:  cfg,
 		DB:      db,
 		Storage: stor,
+		Limits:  ratelimit.New(),
 	}, nil
 }
 
@@ -84,6 +87,7 @@ func (s *Server) Run() error {
 
 	s.registerAPIRoutes(mux)
 	s.registerFormRoutes(mux)
+	s.registerAdminRoutes(mux)
 
 	handler := middleware.Chain(mux,
 		middleware.Recovery,

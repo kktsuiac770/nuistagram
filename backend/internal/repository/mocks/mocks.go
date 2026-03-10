@@ -70,6 +70,11 @@ func (m *MockUserRepository) UpdateAvatar(userID int64, avatar string) error {
 	return args.Error(0)
 }
 
+func (m *MockUserRepository) UpdateRole(userID int64, role string) error {
+	args := m.Called(userID, role)
+	return args.Error(0)
+}
+
 type MockPhotoRepository struct {
 	mock.Mock
 }

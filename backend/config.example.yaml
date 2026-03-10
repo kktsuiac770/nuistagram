@@ -60,3 +60,26 @@ jwt:
   # Refresh token lifetime (default: 168h = 7 days)
   # Override with: JWT_REFRESH_TTL=168h
   refresh_token_ttl: 168h
+
+# Usage limits by role (admin accounts have no limits)
+# To promote a user to admin: UPDATE users SET role='admin' WHERE username='alice';
+# To change a role via API (admin only): POST /admin/users/{username}/role {"role":"pro"}
+usage_limits:
+  basic:
+    uploads_per_day: 10
+    avatars_per_day: 3
+    exports_per_day: 1
+    comments_per_hour: 20
+    likes_per_hour: 50
+  pro:
+    uploads_per_day: 50
+    avatars_per_day: 10
+    exports_per_day: 5
+    comments_per_hour: 100
+    likes_per_hour: 200
+  max:
+    uploads_per_day: 200
+    avatars_per_day: 50
+    exports_per_day: 20
+    comments_per_hour: 500
+    likes_per_hour: 1000

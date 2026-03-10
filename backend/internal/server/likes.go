@@ -14,6 +14,12 @@ func (s *Server) APIToggleLike(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	limits := s.Config.UsageLimits.LimitsForRole(user.Role)
+	if err := s.Limits.CheckAndIncrement(user.ID, "like", limits.LikesPerHour); err != nil {
+		jsonError(w, http.StatusTooManyRequests, "hourly like limit reached")
+		return
+	}
+
 	photoID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		jsonError(w, 400, "invalid photo id")

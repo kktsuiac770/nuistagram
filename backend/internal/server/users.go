@@ -67,6 +67,12 @@ func (s *Server) APIUploadAvatar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	limits := s.Config.UsageLimits.LimitsForRole(user.Role)
+	if err := s.Limits.CheckAndIncrement(user.ID, "avatar", limits.AvatarsPerDay); err != nil {
+		jsonError(w, http.StatusTooManyRequests, "daily avatar upload limit reached")
+		return
+	}
+
 	err := r.ParseMultipartForm(5 << 20)
 	if err != nil {
 		jsonError(w, 400, "file too large")

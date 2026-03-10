@@ -9,13 +9,41 @@ import (
 )
 
 type Config struct {
-	Environment string         `yaml:"environment"`
-	Server      ServerConfig   `yaml:"server"`
-	Database    DatabaseConfig `yaml:"database"`
-	Security    SecurityConfig `yaml:"security"`
-	Paths       PathsConfig    `yaml:"paths"`
-	Storage     StorageConfig  `yaml:"storage"`
-	JWT         JWTConfig      `yaml:"jwt"`
+	Environment string            `yaml:"environment"`
+	Server      ServerConfig      `yaml:"server"`
+	Database    DatabaseConfig    `yaml:"database"`
+	Security    SecurityConfig    `yaml:"security"`
+	Paths       PathsConfig       `yaml:"paths"`
+	Storage     StorageConfig     `yaml:"storage"`
+	JWT         JWTConfig         `yaml:"jwt"`
+	UsageLimits UsageLimitsConfig `yaml:"usage_limits"`
+}
+
+type UsageLimitsConfig struct {
+	Basic RoleLimits `yaml:"basic"`
+	Pro   RoleLimits `yaml:"pro"`
+	Max   RoleLimits `yaml:"max"`
+}
+
+type RoleLimits struct {
+	UploadsPerDay   int `yaml:"uploads_per_day"`
+	AvatarsPerDay   int `yaml:"avatars_per_day"`
+	ExportsPerDay   int `yaml:"exports_per_day"`
+	CommentsPerHour int `yaml:"comments_per_hour"`
+	LikesPerHour    int `yaml:"likes_per_hour"`
+}
+
+func (u UsageLimitsConfig) LimitsForRole(role string) RoleLimits {
+	switch role {
+	case "pro":
+		return u.Pro
+	case "max":
+		return u.Max
+	case "admin":
+		return RoleLimits{} // zero value = unlimited
+	default:
+		return u.Basic
+	}
 }
 
 type JWTConfig struct {
@@ -85,6 +113,29 @@ var defaultConfig = Config{
 	JWT: JWTConfig{
 		AccessTokenTTL:  15 * time.Minute,
 		RefreshTokenTTL: 7 * 24 * time.Hour,
+	},
+	UsageLimits: UsageLimitsConfig{
+		Basic: RoleLimits{
+			UploadsPerDay:   10,
+			AvatarsPerDay:   3,
+			ExportsPerDay:   1,
+			CommentsPerHour: 20,
+			LikesPerHour:    50,
+		},
+		Pro: RoleLimits{
+			UploadsPerDay:   50,
+			AvatarsPerDay:   10,
+			ExportsPerDay:   5,
+			CommentsPerHour: 100,
+			LikesPerHour:    200,
+		},
+		Max: RoleLimits{
+			UploadsPerDay:   200,
+			AvatarsPerDay:   50,
+			ExportsPerDay:   20,
+			CommentsPerHour: 500,
+			LikesPerHour:    1000,
+		},
 	},
 }
 
