@@ -9,7 +9,7 @@ export default function Home() {
   const [page, setPage] = useState(1)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [searchInput, setSearchInput] = useState('')
-  const [feedType, setFeedType] = useState<'all' | 'following'>('following')
+  const [feedType, setFeedType] = useState<'all' | 'following'>('all')
   const { user } = useAuth()
 
   const { data, isLoading, error } = useQuery({
@@ -47,7 +47,7 @@ export default function Home() {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <p className="text-gray-500 dark:text-gray-400 mb-4">Failed to load photos</p>
-        <button 
+        <button
           onClick={() => window.location.reload()}
           className="px-4 py-2 bg-blue-500 text-white rounded-lg"
         >
@@ -63,24 +63,22 @@ export default function Home() {
         {user && (
           <div className="flex gap-2 mb-4">
             <button
-              onClick={() => { setFeedType('following'); setPage(1) }}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                feedType === 'following'
-                  ? 'bg-gray-900 dark:bg-white text-white dark:text-black'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-              }`}
-            >
-              Following
-            </button>
-            <button
               onClick={() => { setFeedType('all'); setPage(1) }}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                feedType === 'all'
-                  ? 'bg-gray-900 dark:bg-white text-white dark:text-black'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-              }`}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${feedType === 'all'
+                ? 'bg-gray-900 dark:bg-white text-white dark:text-black'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                }`}
             >
               All
+            </button>
+            <button
+              onClick={() => { setFeedType('following'); setPage(1) }}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${feedType === 'following'
+                ? 'bg-gray-900 dark:bg-white text-white dark:text-black'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                }`}
+            >
+              Following
             </button>
           </div>
         )}
@@ -144,7 +142,7 @@ export default function Home() {
         <div className="flex flex-col items-center justify-center py-20">
           <p className="text-gray-500 dark:text-gray-400 mb-4">
             {feedType === 'following' && user ? 'Start following people to see their photos here' :
-             selectedTags.length > 0 ? 'No photos found' : 'No photos yet'}
+              selectedTags.length > 0 ? 'No photos found' : 'No photos yet'}
           </p>
           {user && selectedTags.length === 0 && feedType === 'all' && (
             <Link to="/upload" className="px-4 py-2 bg-blue-500 text-white rounded-lg">
