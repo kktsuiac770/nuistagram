@@ -1,16 +1,7 @@
-# ─── Stage 1: Build frontend ──────────────────────────────────────────────────
-FROM node:22-alpine AS frontend-builder
+# Backend image — Go binary only
+# Frontend is served by a separate nginx container (see Dockerfile.frontend)
 
-WORKDIR /build/frontend
-
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
-
-COPY frontend/ ./
-RUN npm run build
-
-# ─── Stage 2: Build Go binary ─────────────────────────────────────────────────
-FROM golang:1.24-alpine AS backend-builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /build
 
@@ -19,22 +10,19 @@ RUN go mod download
 
 COPY backend/ ./
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+RUN CGO_ENABLED=0 GOOS=linux \
     go build -ldflags="-w -s" -o nuistagram ./cmd/server
 
-# ─── Stage 3: Runtime ─────────────────────────────────────────────────────────
+# ─── Runtime ──────────────────────────────────────────────────────────────────
 FROM alpine:3.21
 
 # ca-certificates: required for Cloudinary HTTPS uploads
-# tzdata: correct timezone handling
 RUN apk add --no-cache ca-certificates tzdata
 
 WORKDIR /app
 
-COPY --from=backend-builder /build/nuistagram ./nuistagram
-COPY --from=backend-builder /build/migrations ./migrations
-COPY --from=frontend-builder /build/frontend/dist ./frontend/dist
-COPY backend/static ./static
+COPY --from=builder /build/nuistagram ./nuistagram
+COPY --from=builder /build/migrations ./migrations
 
 EXPOSE 8080
 

@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nuistagram
+  name: nuistagram-backend
   namespace: nuistagram
   labels:
-    app.kubernetes.io/name: nuistagram
-    app.kubernetes.io/component: app
+    app.kubernetes.io/name: nuistagram-backend
+    app.kubernetes.io/component: backend
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: nuistagram
+      app.kubernetes.io/name: nuistagram-backend
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -19,13 +19,11 @@ spec:
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: nuistagram
+        app.kubernetes.io/name: nuistagram-backend
     spec:
       containers:
-        - name: nuistagram
-          # imagePullPolicy: Never is required for images loaded via
-          # "kind load docker-image" — KinD does not pull from a registry.
-          image: nuistagram:latest
+        - name: nuistagram-backend
+          image: nuistagram-backend:latest
           imagePullPolicy: Never
           ports:
             - name: http
@@ -65,7 +63,6 @@ spec:
             runAsNonRoot: true
             runAsUser: 1000
           volumeMounts:
-            # Go's multipart parser writes large uploads to os.TempDir() (/tmp)
             - name: tmp
               mountPath: /tmp
       volumes:

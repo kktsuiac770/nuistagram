@@ -29,6 +29,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: nuistagram
+                name: nuistagram-frontend
                 port:
                   name: http
