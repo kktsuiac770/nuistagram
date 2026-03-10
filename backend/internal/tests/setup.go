@@ -10,9 +10,9 @@ import (
 
 	"nuistagram/internal/cache"
 	"nuistagram/internal/database"
+	jwtpkg "nuistagram/internal/jwt"
 	"nuistagram/internal/repository"
 	"nuistagram/internal/server"
-	"nuistagram/internal/session"
 
 	_ "github.com/lib/pq"
 )
@@ -51,10 +51,16 @@ func SetupTestServer(mux *http.ServeMux) (*TestServer, error) {
 	c := cache.New(5 * 60 * 1000000000)
 	repos := repository.NewRepositories(db, c)
 
+	jwtMgr, err := jwtpkg.NewManager("test-secret-key-for-e2e-tests-32b", 15*time.Minute, 7*24*time.Hour)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("init jwt: %w", err)
+	}
+
 	srv := &server.Server{
-		Repos:    repos,
-		Sessions: session.NewManager(),
-		DB:       db,
+		Repos: repos,
+		JWT:   jwtMgr,
+		DB:    db,
 	}
 
 	httpServer := httptest.NewServer(mux)

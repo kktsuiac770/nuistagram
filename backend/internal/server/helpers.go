@@ -3,8 +3,10 @@ package server
 import (
 	"encoding/json"
 	"net/http"
-	"nuistagram/internal/models"
 	"strconv"
+	"strings"
+
+	"nuistagram/internal/models"
 )
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
@@ -23,33 +25,22 @@ func parseID(s string) int64 {
 }
 
 func (s *Server) currentUser(r *http.Request) *models.User {
-	cookie, err := r.Cookie("session")
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		return nil
+	}
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+
+	claims, err := s.JWT.ValidateAccessToken(tokenString)
 	if err != nil {
 		return nil
 	}
 
-	if !s.Sessions.IsValid(cookie.Value) {
-		return nil
-	}
-
-	userID := s.Sessions.GetUserID(cookie.Value)
-	if userID == 0 {
-		return nil
-	}
-
-	user, err := s.Repos.Users.GetByID(userID)
+	user, err := s.Repos.Users.GetByID(claims.UserID)
 	if err != nil {
 		return nil
 	}
 	return user
-}
-
-func (s *Server) sessionToken(r *http.Request) string {
-	cookie, err := r.Cookie("session")
-	if err != nil {
-		return ""
-	}
-	return cookie.Value
 }
 
 func currentUserID(user *models.User) int64 {

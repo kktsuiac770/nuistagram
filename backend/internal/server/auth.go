@@ -2,9 +2,9 @@ package server
 
 import (
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"regexp"
-	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -68,18 +68,23 @@ func (s *Server) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session := s.Sessions.Create(userID)
-	http.SetCookie(w, &http.Cookie{
-		Name:     "session",
-		Value:    session,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   s.secureCookie,
-		SameSite: http.SameSiteStrictMode,
-		Expires:  time.Now().Add(24 * time.Hour),
-	})
+	accessToken, err := s.JWT.GenerateAccessToken(userID, username)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
+	refreshToken, err := s.JWT.GenerateRefreshToken(userID)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
 
-	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"expires_in":    int(s.JWT.AccessTokenTTL().Seconds()),
+		"token_type":    "Bearer",
+	})
 }
 
 func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
@@ -101,34 +106,72 @@ func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session := s.Sessions.Create(user.ID)
-	http.SetCookie(w, &http.Cookie{
-		Name:     "session",
-		Value:    session,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   s.secureCookie,
-		SameSite: http.SameSiteStrictMode,
-		Expires:  time.Now().Add(24 * time.Hour),
-	})
+	accessToken, err := s.JWT.GenerateAccessToken(user.ID, user.Username)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
+	refreshToken, err := s.JWT.GenerateRefreshToken(user.ID)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
 
-	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"expires_in":    int(s.JWT.AccessTokenTTL().Seconds()),
+		"token_type":    "Bearer",
+	})
 }
 
 func (s *Server) Logout(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("session")
-	if err == nil {
-		s.Sessions.Delete(cookie.Value)
+	var body struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	json.NewDecoder(r.Body).Decode(&body)
+	if body.RefreshToken != "" {
+		s.JWT.RevokeRefreshToken(body.RefreshToken)
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+func (s *Server) Refresh(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RefreshToken == "" {
+		jsonError(w, http.StatusBadRequest, "refresh_token required")
+		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     "session",
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   s.secureCookie,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   -1,
+	userID, err := s.JWT.ConsumeRefreshToken(body.RefreshToken)
+	if err != nil {
+		jsonError(w, http.StatusUnauthorized, "Invalid or expired refresh token")
+		return
+	}
+
+	user, err := s.Repos.Users.GetByID(userID)
+	if err != nil {
+		jsonError(w, http.StatusUnauthorized, "User not found")
+		return
+	}
+
+	accessToken, err := s.JWT.GenerateAccessToken(user.ID, user.Username)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
+	newRefresh, err := s.JWT.GenerateRefreshToken(user.ID)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "Internal error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"access_token":  accessToken,
+		"refresh_token": newRefresh,
+		"expires_in":    int(s.JWT.AccessTokenTTL().Seconds()),
+		"token_type":    "Bearer",
 	})
-	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
 }

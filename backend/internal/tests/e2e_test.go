@@ -28,7 +28,7 @@ func setupE2ETest(t *testing.T) *TestServer {
 	mux.HandleFunc("/api/user/{username}/photos", srv.APIGetUserPhotos)
 	mux.HandleFunc("POST /login", srv.Login)
 	mux.HandleFunc("POST /register", srv.Register)
-	mux.HandleFunc("/logout", srv.Logout)
+	mux.HandleFunc("POST /logout", srv.Logout)
 
 	return ts
 }
@@ -45,9 +45,10 @@ func TestE2E_RegisterAndLogin(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	var registerResp map[string]bool
+	var registerResp map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&registerResp)
-	assert.True(t, registerResp["success"])
+	assert.NotEmpty(t, registerResp["access_token"])
+	assert.NotEmpty(t, registerResp["refresh_token"])
 	resp.Body.Close()
 
 	loginData := url.Values{}
@@ -58,13 +59,12 @@ func TestE2E_RegisterAndLogin(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	var loginResp map[string]bool
+	var loginResp map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&loginResp)
-	assert.True(t, loginResp["success"])
-
-	cookies := resp.Cookies()
-	assert.NotEmpty(t, cookies)
-	assert.Equal(t, "session", cookies[0].Name)
+	assert.NotEmpty(t, loginResp["access_token"])
+	assert.NotEmpty(t, loginResp["refresh_token"])
+	assert.Equal(t, "Bearer", loginResp["token_type"])
+	assert.Empty(t, resp.Cookies())
 	resp.Body.Close()
 }
 
@@ -178,12 +178,14 @@ func TestE2E_FullUserFlow(t *testing.T) {
 	resp, err = ts.Client.PostForm(ts.URL()+"/login", loginData)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var loginResp map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&loginResp)
+	accessToken := loginResp["access_token"].(string)
 	resp.Body.Close()
 
-	sessionCookie := resp.Cookies()[0]
-
 	req, _ := http.NewRequest("GET", ts.URL()+"/api/me", nil)
-	req.AddCookie(sessionCookie)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
 	resp, err = ts.Client.Do(req)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -244,7 +246,6 @@ func TestE2E_LikeRequiresAuth(t *testing.T) {
 	req, _ := http.NewRequest("POST", ts.URL()+"/api/photo/1/like", bytes.NewReader(nil))
 	resp, err := ts.Client.Do(req)
 	assert.NoError(t, err)
-	// Without CSRF middleware in e2e test setup, will get 401 from handler
-	assert.True(t, resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden)
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	resp.Body.Close()
 }

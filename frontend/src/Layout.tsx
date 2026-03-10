@@ -24,7 +24,8 @@ export default function Layout() {
   ]
 
   if (user) {
-    navItems.push({ path: '/notifications', icon: Bell, label: 'Notifications', badge: unreadData?.count })
+    let notificationBadge = unreadData?.count > 0 ? unreadData.count : undefined
+    navItems.push({ path: '/notifications', icon: Bell, label: 'Notifications', badge: notificationBadge })
     navItems.push({ path: '/upload', icon: PlusSquare, label: 'Upload' })
     navItems.push({ path: `/user/${user.username}`, icon: User, label: 'Profile' })
   }
@@ -51,11 +52,10 @@ export default function Layout() {
               <Link
                 key={path}
                 to={path}
-                className={`p-2 rounded-lg transition-colors hidden sm:block relative ${
-                  location.pathname === path
-                    ? 'bg-gray-100 dark:bg-gray-800'
-                    : 'hover:bg-gray-50 dark:hover:bg-gray-900'
-                }`}
+                className={`p-2 rounded-lg transition-colors hidden sm:block relative ${location.pathname === path
+                  ? 'bg-gray-100 dark:bg-gray-800'
+                  : 'hover:bg-gray-50 dark:hover:bg-gray-900'
+                  }`}
                 title={label}
               >
                 <Icon className="w-6 h-6" />
@@ -105,9 +105,8 @@ export default function Layout() {
             <Link
               key={path}
               to={path}
-              className={`flex flex-col items-center justify-center flex-1 h-full relative ${
-                location.pathname === path ? 'text-blue-500' : ''
-              }`}
+              className={`flex flex-col items-center justify-center flex-1 h-full relative ${location.pathname === path ? 'text-blue-500' : ''
+                }`}
             >
               <Icon className="w-6 h-6" />
               <span className="text-xs mt-1">{label}</span>
