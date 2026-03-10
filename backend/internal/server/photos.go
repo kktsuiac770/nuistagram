@@ -35,6 +35,33 @@ func extractExifDate(data []byte) *time.Time {
 	return nil
 }
 
+var heicBrands = map[string]bool{
+	"heic": true, "heis": true, "hevc": true, "hevx": true,
+	"heim": true, "heix": true, "hevm": true, "hevs": true,
+	"mif1": true, "msf1": true,
+}
+
+// detectMIME returns the MIME type for allowed formats, or an error.
+func detectMIME(data []byte) (string, error) {
+	m := http.DetectContentType(data)
+	switch m {
+	case "image/jpeg", "image/png", "image/webp":
+		return m, nil
+	}
+	// Give a specific message for HEIC (not decodable without CGO/libheif).
+	if len(data) >= 12 && string(data[4:8]) == "ftyp" && heicBrands[string(data[8:12])] {
+		return "", fmt.Errorf("HEIC/HEIF is not supported — please convert to JPEG, PNG, or WebP first")
+	}
+	return "", fmt.Errorf("unsupported format — only JPEG, PNG, and WebP are allowed")
+}
+
+func absInt(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
 func generateThumbnail(src image.Image, maxSize int) ([]byte, error) {
 	thumb := imaging.Thumbnail(src, maxSize, maxSize, imaging.Lanczos)
 	var buf bytes.Buffer
@@ -89,29 +116,50 @@ func (s *Server) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Pre-scan: validate all files before any DB writes.
+	validated := make([][]byte, 0, len(files))
 	for _, fileHeader := range files {
 		file, err := fileHeader.Open()
 		if err != nil {
-			continue
+			jsonError(w, http.StatusBadRequest, "failed to read uploaded file")
+			return
 		}
-
 		fileData, err := io.ReadAll(file)
 		file.Close()
 		if err != nil {
-			continue
+			jsonError(w, http.StatusBadRequest, "failed to read uploaded file")
+			return
 		}
+		if len(fileData) > 5*1024*1024 {
+			jsonError(w, http.StatusBadRequest, fmt.Sprintf("%s exceeds the 5 MB limit", fileHeader.Filename))
+			return
+		}
+		if _, err := detectMIME(fileData); err != nil {
+			jsonError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		validated = append(validated, fileData)
+	}
 
+	for _, fileData := range validated {
 		baseFilename := strconv.FormatInt(time.Now().UnixNano(), 36) + "_" + strconv.FormatInt(user.ID, 10)
 
-		// Process the main image.
+		// Decode and enforce 1:1 aspect ratio.
 		img, imgErr := imaging.Decode(bytes.NewReader(fileData), imaging.AutoOrientation(true))
 		var photoData []byte
-		if imgErr == nil {
-			photoData, err = compressImage(img, 1920)
-			if err != nil {
-				photoData = fileData
-			}
-		} else {
+		if imgErr != nil {
+			jsonError(w, http.StatusBadRequest, "invalid or corrupted image file")
+			return
+		}
+		b := img.Bounds()
+		if absInt(b.Dx()-b.Dy()) > 2 {
+			jsonError(w, http.StatusBadRequest, "image must be square (1:1 aspect ratio)")
+			return
+		}
+
+		var err error
+		photoData, err = compressImage(img, 1920)
+		if err != nil {
 			photoData = fileData
 		}
 
@@ -136,13 +184,11 @@ func (s *Server) Upload(w http.ResponseWriter, r *http.Request) {
 
 		// Generate and upload thumbnail.
 		var thumbnailFilename string
-		if imgErr == nil {
-			thumbData, err := generateThumbnail(img, 400)
+		thumbData, err := generateThumbnail(img, 400)
+		if err == nil {
+			thumbResult, err := s.Storage.Upload(r.Context(), thumbData, "thumb_"+baseFilename+".jpg")
 			if err == nil {
-				thumbResult, err := s.Storage.Upload(r.Context(), thumbData, "thumb_"+baseFilename+".jpg")
-				if err == nil {
-					thumbnailFilename = thumbResult.URL
-				}
+				thumbnailFilename = thumbResult.URL
 			}
 		}
 
