@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"nuistagram/internal/cache"
+	"nuistagram/internal/config"
 	"nuistagram/internal/database"
 	jwtpkg "nuistagram/internal/jwt"
 	"nuistagram/internal/repository"
@@ -51,7 +52,12 @@ func SetupTestServer(mux *http.ServeMux) (*TestServer, error) {
 	c := cache.New(5 * 60 * 1000000000)
 	repos := repository.NewRepositories(db, c)
 
-	jwtMgr, err := jwtpkg.NewManager("test-secret-key-for-e2e-tests-32b", 15*time.Minute, 7*24*time.Hour)
+	jwtConfig := config.JWTConfig{
+		Secret:          "test-secret-key-for-e2e-tests-32b",
+		AccessTokenTTL:  15 * time.Minute,
+		RefreshTokenTTL: 7 * 24 * time.Hour,
+	}
+	jwtMgr, err := jwtpkg.NewManager(jwtConfig)
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("init jwt: %w", err)

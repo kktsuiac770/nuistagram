@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"nuistagram/internal/config"
 	jwtpkg "nuistagram/internal/jwt"
 	"nuistagram/internal/models"
 	"nuistagram/internal/repository"
@@ -23,7 +24,12 @@ import (
 
 func setupTestServer() (*Server, *mocks.MockRepositories) {
 	mockRepos := mocks.NewMockRepositories()
-	jwtMgr, _ := jwtpkg.NewManager("test-secret-key-for-unit-tests-32b", 15*time.Minute, 7*24*time.Hour)
+	c := config.JWTConfig{
+		Secret:          "test-secret-key-for-unit-tests-32b",
+		AccessTokenTTL:  15 * time.Minute,
+		RefreshTokenTTL: 7 * 24 * time.Hour,
+	}
+	jwtMgr, _ := jwtpkg.NewManager(c)
 	srv := &Server{
 		Repos: &repository.Repositories{
 			Users:         mockRepos.Users,

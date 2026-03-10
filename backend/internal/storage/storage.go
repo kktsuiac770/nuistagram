@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"nuistagram/internal/config"
 )
 
 // UploadResult holds the result of a successful upload.
@@ -36,7 +37,14 @@ type Storage interface {
 // provider must be "local" or "cloudinary".
 // uploadDir is used only for local storage (e.g. "static/uploads").
 // cloudName, apiKey, apiSecret, folder are used only for Cloudinary.
-func New(provider, uploadDir, cloudName, apiKey, apiSecret, folder string) (Storage, error) {
+func New(c config.StorageConfig) (Storage, error) {
+	provider := c.Provider
+	uploadDir := c.UploadDir
+	cloudName := c.CloudName
+	apiKey := c.APIKey
+	apiSecret := c.APISecret
+	folder := c.Folder
+
 	switch provider {
 	case "cloudinary":
 		if cloudName == "" || apiKey == "" || apiSecret == "" {

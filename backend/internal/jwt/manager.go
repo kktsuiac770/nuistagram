@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"nuistagram/internal/config"
 	"sync"
 	"time"
 
@@ -34,7 +35,11 @@ type Manager struct {
 
 // NewManager constructs a Manager and starts the background cleanup goroutine.
 // Returns an error if secret is empty.
-func NewManager(secret string, accessTTL, refreshTTL time.Duration) (*Manager, error) {
+func NewManager(c config.JWTConfig) (*Manager, error) {
+	secret := c.Secret
+	accessTTL := c.AccessTokenTTL
+	refreshTTL := c.RefreshTokenTTL
+
 	if secret == "" {
 		return nil, errors.New("jwt: secret must not be empty")
 	}

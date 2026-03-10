@@ -33,8 +33,8 @@ func (s *Server) registerAPIRoutes(mux *http.ServeMux) {
 
 // registerFormRoutes registers form-submission routes shared between both modes.
 func (s *Server) registerFormRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /login", rateLimitLogin(s.Login))
-	mux.HandleFunc("POST /register", rateLimitLogin(s.Register))
+	mux.HandleFunc("POST /login", s.Login)
+	mux.HandleFunc("POST /register", s.Register)
 	mux.HandleFunc("POST /logout", s.Logout)
 	mux.HandleFunc("POST /upload", s.Upload)
 	mux.HandleFunc("POST /photo/{id}/delete", s.DeletePhoto)

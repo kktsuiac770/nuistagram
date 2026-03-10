@@ -4,8 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 
 	"nuistagram/internal/cache"
 	"nuistagram/internal/config"
@@ -50,25 +48,18 @@ func New(cfg *config.Config) (*Server, error) {
 	}
 	logging.Info("Database initialized")
 
-	c := cache.New(5 * 60 * 1000000000)
+	c := cache.New(5 * 1000_000_000)
 	repos := repository.NewRepositories(db, c)
 
 	if cfg.JWT.Secret == "" {
 		return nil, fmt.Errorf("JWT_SECRET is required but not set")
 	}
-	jwtMgr, err := jwtpkg.NewManager(cfg.JWT.Secret, cfg.JWT.AccessTokenTTL, cfg.JWT.RefreshTokenTTL)
+	jwtMgr, err := jwtpkg.NewManager(cfg.JWT)
 	if err != nil {
 		return nil, fmt.Errorf("init jwt: %w", err)
 	}
 
-	stor, err := storage.New(
-		cfg.Storage.Provider,
-		cfg.Storage.UploadDir,
-		cfg.Storage.CloudName,
-		cfg.Storage.APIKey,
-		cfg.Storage.APISecret,
-		cfg.Storage.Folder,
-	)
+	stor, err := storage.New(cfg.Storage)
 	if err != nil {
 		return nil, fmt.Errorf("init storage: %w", err)
 	}
@@ -84,21 +75,13 @@ func New(cfg *config.Config) (*Server, error) {
 }
 
 func (s *Server) Run() error {
-	reactDist := s.Config.Paths.ReactDist
-	staticDir := s.Config.Paths.Static
-	indexPath := filepath.Join(reactDist, "index.html")
 	addr := fmt.Sprintf(":%d", s.Config.Server.Port)
 
 	mux := http.NewServeMux()
 	s.registerHealthRoutes(mux)
 
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
 	s.registerAPIRoutes(mux)
 	s.registerFormRoutes(mux)
-
-	logging.Info("Serving React app", "path", reactDist)
-	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir(reactDist+"/assets"))))
-	mux.Handle("/", &spaHandler{staticPath: reactDist, indexPath: indexPath})
 
 	handler := middleware.Chain(mux,
 		middleware.Recovery,
@@ -109,19 +92,4 @@ func (s *Server) Run() error {
 
 	logging.Info("Server starting", "addr", addr)
 	return http.ListenAndServe(addr, handler)
-}
-
-type spaHandler struct {
-	staticPath string
-	indexPath  string
-}
-
-func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	path := filepath.Join(h.staticPath, r.URL.Path)
-	_, err := os.Stat(path)
-	if os.IsNotExist(err) || err != nil {
-		http.ServeFile(w, r, h.indexPath)
-		return
-	}
-	http.ServeFile(w, r, path)
 }

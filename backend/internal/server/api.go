@@ -84,14 +84,14 @@ func parseTags(param string) []string {
 
 func (s *Server) APIGetPhotos(w http.ResponseWriter, r *http.Request) {
 	user := s.currentUser(r)
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	page, _ := strconv.Atoi(r.FormValue("page"))
 	if page < 1 {
 		page = 1
 	}
 
-	feed := r.URL.Query().Get("feed")
+	feed := r.FormValue("feed")
 	userID := currentUserID(user)
-	tags := parseTags(r.URL.Query().Get("tags"))
+	tags := parseTags(r.FormValue("tags"))
 
 	var result *PaginationResponse
 	if feed == "following" && user != nil {
@@ -223,7 +223,7 @@ func (s *Server) APIGetUser(w http.ResponseWriter, r *http.Request) {
 func (s *Server) APIGetUserPhotos(w http.ResponseWriter, r *http.Request) {
 	currentUser := s.currentUser(r)
 	username := r.PathValue("username")
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	page, _ := strconv.Atoi(r.FormValue("page"))
 	if page < 1 {
 		page = 1
 	}

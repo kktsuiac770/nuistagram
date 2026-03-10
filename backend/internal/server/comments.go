@@ -12,11 +12,11 @@ func (s *Server) APIGetComments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	limit, _ := strconv.Atoi(r.FormValue("limit"))
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	offset, _ := strconv.Atoi(r.FormValue("offset"))
 
 	comments, err := s.Repos.Comments.GetByPhotoID(photoID, limit, offset)
 	if err != nil {

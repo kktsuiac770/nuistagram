@@ -13,7 +13,7 @@ import (
 )
 
 func (s *Server) APISearchUsers(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query().Get("q")
+	query := r.FormValue("q")
 	if query == "" {
 		writeJSON(w, 200, []interface{}{})
 		return

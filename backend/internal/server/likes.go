@@ -47,7 +47,7 @@ func (s *Server) APIGetLikers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	limit, _ := strconv.Atoi(r.FormValue("limit"))
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
