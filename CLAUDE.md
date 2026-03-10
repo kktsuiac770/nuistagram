@@ -15,7 +15,7 @@ NUIstagram is a photo-sharing app with a Go backend and React/TypeScript fronten
 | Testing (BE) | testify (mocks + assertions) |
 | Testing (FE) | Vitest 4, React Testing Library 16 |
 | State | React Query (server state), Context API (auth, theme) |
-| Auth | Session cookies (HTTP-only), CSRF tokens |
+| Auth | JWT (HS256 Bearer tokens) — access + refresh token pair |
 | Observability | slog (structured logging), Prometheus metrics, custom tracing |
 
 ---
@@ -37,7 +37,7 @@ nuistagram/
 │   │   ├── repository/              # Interface definitions + SQLite implementations
 │   │   │   └── mocks/               # Mock implementations for handler tests
 │   │   ├── server/                  # HTTP handlers + *_test.go unit tests
-│   │   ├── session/                 # Session manager (24h TTL, 1h inactivity)
+│   │   ├── jwt/                     # JWT manager (access + refresh tokens)
 │   │   ├── storage/                 # Pluggable image storage (local / Cloudinary)
 │   │   └── tests/                   # E2E integration tests (real in-memory SQLite)
 │   ├── config.example.yaml          # Config template
@@ -48,7 +48,7 @@ nuistagram/
 │       ├── components/              # Shared UI components
 │       ├── contexts/                # AuthContext, ThemeContext
 │       ├── hooks/                   # useFollowStatus, …
-│       ├── lib/api.ts               # Centralised API client + CSRF handling
+│       ├── lib/api.ts               # Centralised API client + JWT token management
 │       └── test/setup.ts            # Vitest global setup
 ├── data/                            # SQLite DB file (git-ignored; must exist)
 └── static/                          # Static file serving root
@@ -105,9 +105,11 @@ Config is loaded from `backend/config.yaml` (create from `config.example.yaml`).
 | Env Var | Default | Description |
 |---|---|---|
 | `PORT` | `8080` | HTTP server port |
-| `DB_PATH` | `data/nuistagram.db` | SQLite database path |
-| `SECURE_COOKIE` | `false` | Set `true` in production (HTTPS) |
+| `DATABASE_URL` | `""` | SQLite database path (e.g. `data/nuistagram.db`) |
 | `ENV` | `development` | Affects log format (`production` → JSON) |
+| `JWT_SECRET` | — | **Required.** HS256 signing key; server fails fast if missing |
+| `JWT_ACCESS_TTL` | `15m` | Access token lifetime |
+| `JWT_REFRESH_TTL` | `168h` | Refresh token lifetime (7 days) |
 | `STORAGE_PROVIDER` | `local` | `local` or `cloudinary` |
 | `STORAGE_UPLOAD_DIR` | `static/uploads` | Local upload directory |
 | `CLOUDINARY_CLOUD_NAME` | — | Cloudinary cloud name |
@@ -219,15 +221,17 @@ Tailwind CSS 4 with dark mode support. Always include dark variants:
 
 ### API client
 
-Use the `api` object from `lib/api.ts` — never call `fetch` directly in components. CSRF tokens are handled automatically by `fetchWithCsrf()` inside `api.ts`.
+Use the `api` object from `lib/api.ts` — never call `fetch` directly in components. JWTs are stored in `localStorage` (`nuistagram_access_token`, `nuistagram_refresh_token`). Every request injects `Authorization: Bearer <token>` automatically; on 401 the client calls `POST /api/refresh` once, then retries.
 
 ---
 
 ## Authentication & Security
 
-- **Mechanism:** Session cookie (HTTP-only, SameSite=Strict, 24h expiry, 1h inactivity timeout).
-- **In handlers:** Call `GetCurrentUser(r)` to get the authenticated user; returns `nil` for unauthenticated requests.
-- **CSRF:** All state-changing POST requests require a CSRF token (session-scoped, not per-request). Use `GET /api/csrf-token` to fetch. Frontend `fetchWithCsrf()` manages this automatically.
+- **Mechanism:** JWT HS256 Bearer tokens. Login/Register return `{access_token, refresh_token, expires_in, token_type}`. No cookies, no CSRF.
+- **Access token:** 15 min TTL, sent as `Authorization: Bearer <token>` header.
+- **Refresh token:** 7-day TTL, one-time-use (rotation on consume), stored in-memory in `internal/jwt/manager.go`.
+- **In handlers:** Call `s.currentUser(r)` to get the authenticated user from the Bearer header; returns `nil` for unauthenticated requests.
+- **Token refresh:** `POST /api/refresh` with `{"refresh_token": "..."}` — consumes old token and issues a new pair.
 - **Password rules:** ≥ 8 chars, at least one uppercase, one lowercase, one digit.
 - **Rate limiting:** Login and register endpoints are rate-limited.
 
@@ -240,18 +244,21 @@ Use the `api` object from `lib/api.ts` — never call `fetch` directly in compon
 | Category | Examples |
 |---|---|
 | REST API (JSON) | `GET /api/photos`, `GET /api/photo/{id}`, `GET /api/me` |
-| Auth (form) | `POST /login`, `POST /register`, `GET /logout` |
-| Mutations (form/multipart) | `POST /upload`, `POST /photo/{id}/delete`, `POST /photo/{id}/edit` |
+| Auth (JSON body) | `POST /login`, `POST /register`, `POST /logout`, `POST /api/refresh` |
+| Mutations (form/multipart) | `POST /upload`, `POST /photo/{id}/delete` |
 | Health | `GET /healthz`, `GET /readyz` |
 | Export | `GET /export` — ZIP of all user's photos |
 
 ### Key API endpoints
 
 ```
-GET  /api/csrf-token                  # Get CSRF token for current session
+POST /login                           # Returns {access_token, refresh_token, expires_in, token_type}
+POST /register                        # Same response as login
+POST /logout                          # Body: {"refresh_token": "..."} — revokes token
+POST /api/refresh                     # Body: {"refresh_token": "..."} — rotates token pair
 GET  /api/photos                      # Feed (paginated; ?page=1&tags=x&feed=following)
 GET  /api/photo/{id}                  # Single photo
-POST /api/photo/{id}/like             # Toggle like (CSRF required)
+POST /api/photo/{id}/like             # Toggle like (Bearer required)
 GET  /api/photo/{id}/comments         # Comments
 POST /api/photo/{id}/comment          # Add comment
 GET  /api/photo/{id}/likers           # Who liked this photo
@@ -259,15 +266,15 @@ GET  /api/me                          # Current user with counts
 GET  /api/user/{username}             # User profile with follow status
 GET  /api/user/{username}/photos      # User's photos
 GET  /api/user/{username}/follow-status
-POST /api/user/{username}/follow      # Follow (CSRF required)
-POST /api/user/{username}/unfollow    # Unfollow (CSRF required)
+POST /api/user/{username}/follow      # Follow (Bearer required)
+POST /api/user/{username}/unfollow    # Unfollow (Bearer required)
 GET  /api/notifications               # Notifications list
 GET  /api/notifications/unread        # Unread count
-POST /api/notifications/{id}/read     # Mark one read (CSRF required)
-POST /api/notifications/read-all      # Mark all read (CSRF required)
+POST /api/notifications/{id}/read     # Mark one read
+POST /api/notifications/read-all      # Mark all read
 GET  /api/search/users                # User search
-POST /api/profile                     # Update bio (CSRF required)
-POST /api/avatar                      # Upload avatar (CSRF required)
+POST /api/profile                     # Update bio (Bearer required)
+POST /api/avatar                      # Upload avatar (Bearer required)
 GET  /api/nuis                        # List all tags
 GET  /export                          # Download ZIP of all user photos
 ```
@@ -312,6 +319,7 @@ import * as apiModule from '../lib/api'
 beforeEach(() => vi.clearAllMocks())
 
 it('shows username after login', async () => {
+    localStorage.setItem('nuistagram_access_token', 'fake-token')
     vi.spyOn(apiModule.api, 'getMe').mockResolvedValue({ id: 1, username: 'alice' })
     render(<AuthProvider><TestComponent /></AuthProvider>)
     await waitFor(() => expect(screen.getByText('alice')).toBeInTheDocument())
