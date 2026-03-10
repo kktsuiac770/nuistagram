@@ -1,0 +1,34 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Before accessing the app, add this line to /etc/hosts:
+#   127.0.0.1   nuistagram.local
+#
+# macOS/Linux: sudo sh -c 'echo "127.0.0.1 nuistagram.local" >> /etc/hosts'
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nuistagram
+  namespace: nuistagram
+  labels:
+    app.kubernetes.io/name: nuistagram
+  annotations:
+    # Support both legacy (pre-1.0) and current ingress-nginx versions
+    kubernetes.io/ingress.class: "nginx"
+    # App accepts up to 100 MiB multipart uploads (ParseMultipartForm(100 << 20))
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    # Extra timeout headroom for the /export endpoint (ZIP of all user photos)
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: nuistagram.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nuistagram
+                port:
+                  name: http

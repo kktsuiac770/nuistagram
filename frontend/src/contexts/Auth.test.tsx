@@ -36,7 +36,7 @@ describe('AuthProvider', () => {
 
   it('should show loading state initially', () => {
     localStorage.setItem('nuistagram_access_token', 'fake-token')
-    vi.spyOn(apiModule.api, 'getMe').mockImplementation(() => new Promise(() => {}))
+    vi.spyOn(apiModule.api, 'getMe').mockImplementation(() => new Promise(() => { }))
 
     render(
       <AuthProvider>
@@ -161,7 +161,7 @@ describe('AuthProvider', () => {
   })
 
   it('should throw error when useAuth is used outside AuthProvider', () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => { })
 
     expect(() => {
       render(createElement(TestComponent))

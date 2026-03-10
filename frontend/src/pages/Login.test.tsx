@@ -89,7 +89,7 @@ describe('Login', () => {
 
   it('should call login on form submit', async () => {
     const user = userEvent.setup()
-    vi.spyOn(apiModule.api, 'login').mockResolvedValue({ success: true })
+    vi.spyOn(apiModule.api, 'login').mockResolvedValue({ access_token: "fake_access_token", refresh_token: "fake_refresh_token", expires_in: 3600, token_type: "Bearer" })
     vi.spyOn(apiModule.api, 'getMe').mockResolvedValue({ id: 1, username: 'testuser' })
 
     renderLogin()
@@ -110,7 +110,7 @@ describe('Login', () => {
 
   it('should show loading state during login', async () => {
     const user = userEvent.setup()
-    vi.spyOn(apiModule.api, 'login').mockImplementation(() => new Promise(() => {}))
+    vi.spyOn(apiModule.api, 'login').mockImplementation(() => new Promise(() => { }))
 
     renderLogin()
 
@@ -153,7 +153,7 @@ describe('Login', () => {
 
   it('should navigate to home on successful login', async () => {
     const user = userEvent.setup()
-    vi.spyOn(apiModule.api, 'login').mockResolvedValue({ success: true })
+    vi.spyOn(apiModule.api, 'login').mockResolvedValue({ access_token: "fake_access_token", refresh_token: "fake_refresh_token", expires_in: 3600, token_type: "Bearer" })
     vi.spyOn(apiModule.api, 'getMe').mockResolvedValue({ id: 1, username: 'testuser' })
 
     renderLogin()

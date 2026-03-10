@@ -1,0 +1,31 @@
+# Version control
+.git
+
+# Local runtime data
+data/
+backend/data/
+
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+
+# Backend build artifacts
+backend/nuistagram
+nuistagram
+
+# Local config and secrets
+backend/config.yaml
+.env
+backend/.env
+k8s/secret.yaml
+
+# Test artifacts
+backend/coverage.out
+
+# OS artifacts
+.DS_Store
+**/.DS_Store
+
+# KinD / k8s config (not needed in image)
+kind-config.yaml
+k8s/

@@ -24,7 +24,12 @@ export default function Layout() {
   ]
 
   if (user) {
-    let notificationBadge = unreadData?.count > 0 ? unreadData.count : undefined
+    let notificationBadge;
+    if (unreadData) {
+      const { count } = unreadData
+      notificationBadge = count > 0 ? count : undefined
+    }
+
     navItems.push({ path: '/notifications', icon: Bell, label: 'Notifications', badge: notificationBadge })
     navItems.push({ path: '/upload', icon: PlusSquare, label: 'Upload' })
     navItems.push({ path: `/user/${user.username}`, icon: User, label: 'Profile' })

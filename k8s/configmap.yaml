@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nuistagram-config
+  namespace: nuistagram
+  labels:
+    app.kubernetes.io/name: nuistagram
+data:
+  PORT: "8080"
+  ENV: "production"
+  STORAGE_PROVIDER: "cloudinary"
+  CLOUDINARY_FOLDER: "nuistagram"
