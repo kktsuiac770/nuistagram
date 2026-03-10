@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, act } from '@testing-library/react'
 import { AuthProvider, useAuth } from './Auth'
 import * as apiModule from '../lib/api'
@@ -17,12 +17,25 @@ function TestComponent() {
   )
 }
 
+const fakeTokenResponse = {
+  access_token: 'fake-access-token',
+  refresh_token: 'fake-refresh-token',
+  expires_in: 900,
+  token_type: 'Bearer',
+}
+
 describe('AuthProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    localStorage.clear()
   })
 
   it('should show loading state initially', () => {
+    localStorage.setItem('nuistagram_access_token', 'fake-token')
     vi.spyOn(apiModule.api, 'getMe').mockImplementation(() => new Promise(() => {}))
 
     render(
@@ -35,6 +48,7 @@ describe('AuthProvider', () => {
   })
 
   it('should set user when getMe succeeds', async () => {
+    localStorage.setItem('nuistagram_access_token', 'fake-token')
     vi.spyOn(apiModule.api, 'getMe').mockResolvedValue({ id: 1, username: 'testuser' })
 
     render(
@@ -51,6 +65,7 @@ describe('AuthProvider', () => {
   })
 
   it('should set user to null when getMe fails', async () => {
+    localStorage.setItem('nuistagram_access_token', 'fake-token')
     vi.spyOn(apiModule.api, 'getMe').mockRejectedValue(new Error('Unauthorized'))
 
     render(
@@ -67,10 +82,9 @@ describe('AuthProvider', () => {
   })
 
   it('should login and set user', async () => {
-    vi.spyOn(apiModule.api, 'getMe')
-      .mockRejectedValueOnce(new Error('Unauthorized'))
-      .mockResolvedValueOnce({ id: 1, username: 'testuser' })
-    vi.spyOn(apiModule.api, 'login').mockResolvedValue({ success: true })
+    // No token → init skips getMe; getMe is only called after login
+    vi.spyOn(apiModule.api, 'getMe').mockResolvedValue({ id: 1, username: 'testuser' })
+    vi.spyOn(apiModule.api, 'login').mockResolvedValue(fakeTokenResponse)
 
     render(
       <AuthProvider>
@@ -94,10 +108,9 @@ describe('AuthProvider', () => {
   })
 
   it('should register and set user', async () => {
-    vi.spyOn(apiModule.api, 'getMe')
-      .mockRejectedValueOnce(new Error('Unauthorized'))
-      .mockResolvedValueOnce({ id: 1, username: 'newuser' })
-    vi.spyOn(apiModule.api, 'register').mockResolvedValue({ success: true })
+    // No token → init skips getMe; getMe is only called after register
+    vi.spyOn(apiModule.api, 'getMe').mockResolvedValue({ id: 1, username: 'newuser' })
+    vi.spyOn(apiModule.api, 'register').mockResolvedValue(fakeTokenResponse)
 
     render(
       <AuthProvider>
@@ -121,9 +134,10 @@ describe('AuthProvider', () => {
   })
 
   it('should logout and clear user', async () => {
+    // Set token so init calls getMe and populates user
+    localStorage.setItem('nuistagram_access_token', 'fake-token')
     vi.spyOn(apiModule.api, 'getMe').mockResolvedValue({ id: 1, username: 'testuser' })
     vi.spyOn(apiModule.api, 'logout').mockResolvedValue({ success: true })
-    vi.spyOn(apiModule, 'clearCsrfToken').mockImplementation(() => {})
 
     render(
       <AuthProvider>
@@ -144,7 +158,6 @@ describe('AuthProvider', () => {
     })
 
     expect(apiModule.api.logout).toHaveBeenCalled()
-    expect(apiModule.clearCsrfToken).toHaveBeenCalled()
   })
 
   it('should throw error when useAuth is used outside AuthProvider', () => {

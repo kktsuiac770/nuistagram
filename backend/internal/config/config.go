@@ -15,6 +15,13 @@ type Config struct {
 	Security    SecurityConfig `yaml:"security"`
 	Paths       PathsConfig    `yaml:"paths"`
 	Storage     StorageConfig  `yaml:"storage"`
+	JWT         JWTConfig      `yaml:"jwt"`
+}
+
+type JWTConfig struct {
+	Secret          string        `yaml:"secret"`
+	AccessTokenTTL  time.Duration `yaml:"access_token_ttl"`
+	RefreshTokenTTL time.Duration `yaml:"refresh_token_ttl"`
 }
 
 type ServerConfig struct {
@@ -74,6 +81,10 @@ var defaultConfig = Config{
 		Provider:  "local",
 		UploadDir: "static/uploads",
 		Folder:    "nuistagram",
+	},
+	JWT: JWTConfig{
+		AccessTokenTTL:  15 * time.Minute,
+		RefreshTokenTTL: 7 * 24 * time.Hour,
 	},
 }
 
@@ -136,5 +147,19 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if folder := os.Getenv("CLOUDINARY_FOLDER"); folder != "" {
 		cfg.Storage.Folder = folder
+	}
+
+	if secret := os.Getenv("JWT_SECRET"); secret != "" {
+		cfg.JWT.Secret = secret
+	}
+	if ttl := os.Getenv("JWT_ACCESS_TTL"); ttl != "" {
+		if d, err := time.ParseDuration(ttl); err == nil {
+			cfg.JWT.AccessTokenTTL = d
+		}
+	}
+	if ttl := os.Getenv("JWT_REFRESH_TTL"); ttl != "" {
+		if d, err := time.ParseDuration(ttl); err == nil {
+			cfg.JWT.RefreshTokenTTL = d
+		}
 	}
 }

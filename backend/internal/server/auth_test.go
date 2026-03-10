@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -10,10 +11,10 @@ import (
 	"testing"
 	"time"
 
+	jwtpkg "nuistagram/internal/jwt"
 	"nuistagram/internal/models"
 	"nuistagram/internal/repository"
 	"nuistagram/internal/repository/mocks"
-	"nuistagram/internal/session"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -22,6 +23,7 @@ import (
 
 func setupTestServer() (*Server, *mocks.MockRepositories) {
 	mockRepos := mocks.NewMockRepositories()
+	jwtMgr, _ := jwtpkg.NewManager("test-secret-key-for-unit-tests-32b", 15*time.Minute, 7*24*time.Hour)
 	srv := &Server{
 		Repos: &repository.Repositories{
 			Users:         mockRepos.Users,
@@ -34,7 +36,7 @@ func setupTestServer() (*Server, *mocks.MockRepositories) {
 			Comments:      mockRepos.Comments,
 			Notifications: mockRepos.Notifications,
 		},
-		Sessions: session.NewManager(),
+		JWT: jwtMgr,
 	}
 	return srv, mockRepos
 }
@@ -55,9 +57,13 @@ func TestRegister_Success(t *testing.T) {
 	srv.Register(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	var response map[string]bool
+	var response map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &response)
-	assert.True(t, response["success"])
+	assert.NotEmpty(t, response["access_token"])
+	assert.NotEmpty(t, response["refresh_token"])
+	assert.Equal(t, float64(900), response["expires_in"])
+	assert.Equal(t, "Bearer", response["token_type"])
+	assert.Empty(t, w.Result().Cookies())
 	mockRepos.Users.AssertExpectations(t)
 }
 
@@ -164,7 +170,6 @@ func TestLogin_Success(t *testing.T) {
 		ID:           1,
 		Username:     "testuser",
 		PasswordHash: string(hashedPassword),
-		CreatedAt:    time.Now(),
 	}
 
 	mockRepos.Users.On("GetByUsername", "testuser").Return(mockUser, nil)
@@ -180,13 +185,13 @@ func TestLogin_Success(t *testing.T) {
 	srv.Login(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	var response map[string]bool
+	var response map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &response)
-	assert.True(t, response["success"])
-
-	cookie := w.Result().Cookies()
-	assert.Len(t, cookie, 1)
-	assert.Equal(t, "session", cookie[0].Name)
+	assert.NotEmpty(t, response["access_token"])
+	assert.NotEmpty(t, response["refresh_token"])
+	assert.Equal(t, float64(900), response["expires_in"])
+	assert.Equal(t, "Bearer", response["token_type"])
+	assert.Empty(t, w.Result().Cookies())
 	mockRepos.Users.AssertExpectations(t)
 }
 
@@ -217,7 +222,6 @@ func TestLogin_InvalidPassword(t *testing.T) {
 		ID:           1,
 		Username:     "testuser",
 		PasswordHash: string(hashedPassword),
-		CreatedAt:    time.Now(),
 	}
 
 	mockRepos.Users.On("GetByUsername", "testuser").Return(mockUser, nil)
@@ -239,9 +243,8 @@ func TestLogin_InvalidPassword(t *testing.T) {
 func TestLogout_Success(t *testing.T) {
 	srv, _ := setupTestServer()
 
-	req := httptest.NewRequest("POST", "/logout", nil)
-	sessionToken := srv.Sessions.Create(1)
-	req.AddCookie(&http.Cookie{Name: "session", Value: sessionToken})
+	req := httptest.NewRequest("POST", "/logout", strings.NewReader(`{"refresh_token":""}`))
+	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
 	srv.Logout(w, req)
@@ -250,11 +253,61 @@ func TestLogout_Success(t *testing.T) {
 	var response map[string]bool
 	json.Unmarshal(w.Body.Bytes(), &response)
 	assert.True(t, response["success"])
+	assert.Empty(t, w.Result().Cookies())
+}
 
-	cookie := w.Result().Cookies()
-	assert.Len(t, cookie, 1)
-	assert.Equal(t, "session", cookie[0].Name)
-	assert.Equal(t, -1, cookie[0].MaxAge)
+func TestRefresh_Success(t *testing.T) {
+	srv, mockRepos := setupTestServer()
+
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("Password123"), bcrypt.DefaultCost)
+	mockUser := &models.User{
+		ID:           1,
+		Username:     "testuser",
+		PasswordHash: string(hashedPassword),
+	}
+	mockRepos.Users.On("GetByID", int64(1)).Return(mockUser, nil)
+
+	refreshToken, _ := srv.JWT.GenerateRefreshToken(1)
+
+	body, _ := json.Marshal(map[string]string{"refresh_token": refreshToken})
+	req := httptest.NewRequest("POST", "/api/refresh", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Refresh(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var response map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NotEmpty(t, response["access_token"])
+	assert.NotEmpty(t, response["refresh_token"])
+	assert.NotEqual(t, refreshToken, response["refresh_token"]) // rotation: new token issued
+	mockRepos.Users.AssertExpectations(t)
+}
+
+func TestRefresh_InvalidToken(t *testing.T) {
+	srv, _ := setupTestServer()
+
+	body, _ := json.Marshal(map[string]string{"refresh_token": "notvalid"})
+	req := httptest.NewRequest("POST", "/api/refresh", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Refresh(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestRefresh_MissingToken(t *testing.T) {
+	srv, _ := setupTestServer()
+
+	req := httptest.NewRequest("POST", "/api/refresh", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Refresh(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestValidatePassword(t *testing.T) {

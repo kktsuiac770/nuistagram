@@ -47,3 +47,16 @@ storage:
   # Cloudinary folder prefix for all uploaded assets (default: nuistagram)
   # Override with: CLOUDINARY_FOLDER=nuistagram
   folder: nuistagram
+
+jwt:
+  # Required — at least 32 bytes of random entropy
+  # Override with: JWT_SECRET=<random-secret>
+  secret: ""
+
+  # Access token lifetime (default: 15m)
+  # Override with: JWT_ACCESS_TTL=15m
+  access_token_ttl: 15m
+
+  # Refresh token lifetime (default: 168h = 7 days)
+  # Override with: JWT_REFRESH_TTL=168h
+  refresh_token_ttl: 168h

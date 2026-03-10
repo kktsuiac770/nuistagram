@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { api, type User, clearCsrfToken } from '../lib/api'
+import { api, type User, getAccessToken, clearTokens } from '../lib/api'
 
 interface AuthContextType {
   user: User | null
@@ -16,9 +16,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!getAccessToken()) {
+      setLoading(false)
+      return
+    }
     api.getMe()
       .then(setUser)
-      .catch(() => setUser(null))
+      .catch(() => {
+        clearTokens()
+        setUser(null)
+      })
       .finally(() => setLoading(false))
   }, [])
 
@@ -36,7 +43,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     await api.logout()
-    clearCsrfToken()
     setUser(null)
   }
 

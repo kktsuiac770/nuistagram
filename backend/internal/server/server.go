@@ -10,21 +10,20 @@ import (
 	"nuistagram/internal/cache"
 	"nuistagram/internal/config"
 	"nuistagram/internal/database"
+	jwtpkg "nuistagram/internal/jwt"
 	"nuistagram/internal/middleware"
 	"nuistagram/internal/monitoring/logging"
 	"nuistagram/internal/monitoring/tracing"
 	"nuistagram/internal/repository"
-	"nuistagram/internal/session"
 	"nuistagram/internal/storage"
 )
 
 type Server struct {
-	Repos        *repository.Repositories
-	Sessions     *session.Manager
-	Config       *config.Config
-	DB           *sql.DB
-	Storage      storage.Storage
-	secureCookie bool
+	Repos   *repository.Repositories
+	JWT     *jwtpkg.Manager
+	Config  *config.Config
+	DB      *sql.DB
+	Storage storage.Storage
 }
 
 func New(cfg *config.Config) (*Server, error) {
@@ -53,7 +52,14 @@ func New(cfg *config.Config) (*Server, error) {
 
 	c := cache.New(5 * 60 * 1000000000)
 	repos := repository.NewRepositories(db, c)
-	sessions := session.NewManager()
+
+	if cfg.JWT.Secret == "" {
+		return nil, fmt.Errorf("JWT_SECRET is required but not set")
+	}
+	jwtMgr, err := jwtpkg.NewManager(cfg.JWT.Secret, cfg.JWT.AccessTokenTTL, cfg.JWT.RefreshTokenTTL)
+	if err != nil {
+		return nil, fmt.Errorf("init jwt: %w", err)
+	}
 
 	stor, err := storage.New(
 		cfg.Storage.Provider,
@@ -69,12 +75,11 @@ func New(cfg *config.Config) (*Server, error) {
 	logging.Info("Storage initialized", "provider", cfg.Storage.Provider)
 
 	return &Server{
-		Repos:        repos,
-		Sessions:     sessions,
-		Config:       cfg,
-		DB:           db,
-		Storage:      stor,
-		secureCookie: cfg.Security.SecureCookie,
+		Repos:   repos,
+		JWT:     jwtMgr,
+		Config:  cfg,
+		DB:      db,
+		Storage: stor,
 	}, nil
 }
 
