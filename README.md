@@ -95,9 +95,9 @@ NUIstagram uses JWT-based authentication:
 
 ```bash
 cd backend
-go test ./...                          # all tests
-go test ./internal/server -v           # handler unit tests (verbose)
-go test -v ./... -race -coverprofile=coverage.out  # race detector + coverage
+go test ./...                                        # all tests
+go test ./internal/auth ./internal/photos -v         # specific packages (verbose)
+go test -v ./... -race -coverprofile=coverage.out    # race detector + coverage
 ```
 
 **Frontend:**
@@ -115,12 +115,28 @@ nuistagram/
 ├── backend/
 │   ├── cmd/server/main.go       # Binary entry point
 │   └── internal/
+│       ├── admin/               # Admin handlers (role management)
+│       ├── auth/                # Auth handlers (login, register, refresh, logout)
+│       ├── comments/            # Comment handlers
+│       ├── config/              # YAML config + env var overrides
 │       ├── database/            # SQLite init, schema, auto-migrations
+│       ├── follows/             # Follow/unfollow handlers
+│       ├── health/              # Health and readiness endpoints
+│       ├── httputil/            # Shared HTTP helpers and Authenticator interface
 │       ├── jwt/                 # JWT manager (access + refresh tokens)
+│       ├── likes/               # Like handlers
+│       ├── middleware/          # Recovery, RequestID, logging, tracing
 │       ├── models/              # Domain structs (User, Photo, Comment, …)
+│       ├── monitoring/          # Prometheus metrics and structured logging
+│       ├── notifications/       # Notification handlers
+│       ├── photos/              # Photo upload, feed, and management handlers
+│       ├── ratelimit/           # Per-role usage limits
 │       ├── repository/          # Data access interfaces + SQLite implementations
-│       ├── server/              # HTTP handlers and routes
-│       └── storage/             # Pluggable image storage (local / Cloudinary)
+│       │   └── mocks/           # Mock implementations for unit tests
+│       ├── server/              # Composition root — wires domain handlers and routes
+│       ├── storage/             # Pluggable image storage (local / Cloudinary)
+│       ├── tests/               # E2E integration tests (real in-memory SQLite)
+│       └── users/               # User profile handlers
 └── frontend/
     └── src/
         ├── pages/               # Route-level components
