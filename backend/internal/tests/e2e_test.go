@@ -19,16 +19,16 @@ func setupE2ETest(t *testing.T) *TestServer {
 
 	srv := ts.Srv
 
-	mux.HandleFunc("/api/photos", srv.APIGetPhotos)
-	mux.HandleFunc("/api/photo/{id}", srv.APIGetPhoto)
-	mux.HandleFunc("/api/me", srv.APIGetMe)
-	mux.HandleFunc("/api/nuis", srv.APIGetNuis)
-	mux.HandleFunc("/api/photo/{id}/like", srv.APIToggleLike)
-	mux.HandleFunc("/api/user/{username}", srv.APIGetUser)
-	mux.HandleFunc("/api/user/{username}/photos", srv.APIGetUserPhotos)
-	mux.HandleFunc("POST /login", srv.Login)
-	mux.HandleFunc("POST /register", srv.Register)
-	mux.HandleFunc("POST /logout", srv.Logout)
+	mux.HandleFunc("/api/photos", srv.Photos().APIGetPhotos)
+	mux.HandleFunc("/api/photo/{id}", srv.Photos().APIGetPhoto)
+	mux.HandleFunc("/api/me", srv.Users().APIGetMe)
+	mux.HandleFunc("/api/nuis", srv.Photos().APIGetNuis)
+	mux.HandleFunc("/api/photo/{id}/like", srv.Likes().APIToggleLike)
+	mux.HandleFunc("/api/user/{username}", srv.Users().APIGetUser)
+	mux.HandleFunc("/api/user/{username}/photos", srv.Photos().APIGetUserPhotos)
+	mux.HandleFunc("POST /login", srv.Auth().Login)
+	mux.HandleFunc("POST /register", srv.Auth().Register)
+	mux.HandleFunc("POST /logout", srv.Auth().Logout)
 
 	return ts
 }

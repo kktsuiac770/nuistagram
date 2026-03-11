@@ -1,4 +1,4 @@
-package server
+package photos
 
 import (
 	"database/sql"
@@ -9,12 +9,35 @@ import (
 	"testing"
 	"time"
 
+	"nuistagram/internal/auth"
+	"nuistagram/internal/config"
+	jwtpkg "nuistagram/internal/jwt"
 	"nuistagram/internal/models"
+	"nuistagram/internal/monitoring/metrics"
+	"nuistagram/internal/ratelimit"
 	"nuistagram/internal/repository"
+	"nuistagram/internal/repository/mocks"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func newHandler() (*Handler, *mocks.MockRepositories, *jwtpkg.Manager) {
+	metrics.Init()
+	mockRepos := mocks.NewMockRepositories()
+	jwtConfig := config.JWTConfig{
+		Secret:          "test-secret-key-for-unit-tests-32b",
+		AccessTokenTTL:  15 * time.Minute,
+		RefreshTokenTTL: 7 * 24 * time.Hour,
+	}
+	jwtMgr, _ := jwtpkg.NewManager(jwtConfig)
+	authHandler := auth.New(mockRepos.Users, jwtMgr)
+	h := New(
+		authHandler, mockRepos.Users, mockRepos.Photos, mockRepos.Nuis,
+		mockRepos.Albums, mockRepos.Favorites, nil, &config.Config{}, ratelimit.New(),
+	)
+	return h, mockRepos, jwtMgr
+}
 
 // --- parseTags ---
 
@@ -93,73 +116,72 @@ func TestConvertToResponse_ZeroTakenAt(t *testing.T) {
 // --- APIGetPhotos ---
 
 func TestAPIGetPhotos_DefaultFeed(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, _ := newHandler()
 	paginationResult := &repository.PaginationResult{Photos: []models.PhotoWithNuis{}}
 	mockRepos.Photos.On("GetAll", 1, int64(0)).Return(paginationResult, nil)
 
 	req := httptest.NewRequest("GET", "/api/photos", nil)
 	w := httptest.NewRecorder()
 
-	srv.APIGetPhotos(w, req)
+	h.APIGetPhotos(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	mockRepos.Photos.AssertExpectations(t)
 }
 
 func TestAPIGetPhotos_FollowingFeed(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, jwtMgr := newHandler()
 	alice := &models.User{ID: 1, Username: "alice"}
 	mockRepos.Users.On("GetByID", int64(1)).Return(alice, nil)
 	paginationResult := &repository.PaginationResult{Photos: []models.PhotoWithNuis{}}
 	mockRepos.Photos.On("GetFollowingFeed", int64(1), 1).Return(paginationResult, nil)
 
-	token, _ := srv.JWT.GenerateAccessToken(1, "alice")
+	token, _ := jwtMgr.GenerateAccessToken(1, "alice")
 	req := httptest.NewRequest("GET", "/api/photos?feed=following", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
-	srv.APIGetPhotos(w, req)
+	h.APIGetPhotos(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	mockRepos.Photos.AssertExpectations(t)
 }
 
 func TestAPIGetPhotos_TagSearch(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, _ := newHandler()
 	paginationResult := &repository.PaginationResult{Photos: []models.PhotoWithNuis{}}
 	mockRepos.Photos.On("Search", []string{"nature"}, "or", 1, int64(0)).Return(paginationResult, nil)
 
 	req := httptest.NewRequest("GET", "/api/photos?tags=nature", nil)
 	w := httptest.NewRecorder()
 
-	srv.APIGetPhotos(w, req)
+	h.APIGetPhotos(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	mockRepos.Photos.AssertExpectations(t)
 }
 
 func TestAPIGetPhotos_RepoError(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, _ := newHandler()
 	mockRepos.Photos.On("GetAll", 1, int64(0)).Return(nil, errors.New("db error"))
 
 	req := httptest.NewRequest("GET", "/api/photos", nil)
 	w := httptest.NewRecorder()
 
-	srv.APIGetPhotos(w, req)
+	h.APIGetPhotos(w, req)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 func TestAPIGetPhotos_PageDefault(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, _ := newHandler()
 	paginationResult := &repository.PaginationResult{Photos: []models.PhotoWithNuis{}}
-	// page=0 or negative should default to 1
 	mockRepos.Photos.On("GetAll", 1, int64(0)).Return(paginationResult, nil)
 
 	req := httptest.NewRequest("GET", "/api/photos?page=0", nil)
 	w := httptest.NewRecorder()
 
-	srv.APIGetPhotos(w, req)
+	h.APIGetPhotos(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	mockRepos.Photos.AssertExpectations(t)
@@ -168,20 +190,20 @@ func TestAPIGetPhotos_PageDefault(t *testing.T) {
 // --- APIGetPhoto ---
 
 func TestAPIGetPhoto_NotFound(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, _ := newHandler()
 	mockRepos.Photos.On("GetByID", int64(99), int64(0)).Return(nil, "", sql.ErrNoRows)
 
 	req := httptest.NewRequest("GET", "/api/photo/99", nil)
 	req.SetPathValue("id", "99")
 	w := httptest.NewRecorder()
 
-	srv.APIGetPhoto(w, req)
+	h.APIGetPhoto(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestAPIGetPhoto_Success(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, _ := newHandler()
 	photo := &models.PhotoWithNuis{
 		Photo: models.Photo{
 			ID:        1,
@@ -197,7 +219,7 @@ func TestAPIGetPhoto_Success(t *testing.T) {
 	req.SetPathValue("id", "1")
 	w := httptest.NewRecorder()
 
-	srv.APIGetPhoto(w, req)
+	h.APIGetPhoto(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var body PhotoResponse
@@ -206,83 +228,29 @@ func TestAPIGetPhoto_Success(t *testing.T) {
 	assert.Equal(t, int64(1), body.ID)
 }
 
-// --- APIGetMe ---
-
-func TestAPIGetMe_Unauthorized(t *testing.T) {
-	srv, _ := setupTestServer()
-
-	req := httptest.NewRequest("GET", "/api/me", nil)
-	w := httptest.NewRecorder()
-
-	srv.APIGetMe(w, req)
-
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
-}
-
-func TestAPIGetMe_Success(t *testing.T) {
-	srv, mockRepos := setupTestServer()
-	alice := &models.User{ID: 1, Username: "alice"}
-	fullAlice := &models.User{
-		ID: 1, Username: "alice", Bio: "hello", Avatar: "a.jpg",
-		PhotoCount: 10, FollowerCount: 5, FollowingCount: 3,
-	}
-	mockRepos.Users.On("GetByID", int64(1)).Return(alice, nil)
-	mockRepos.Users.On("GetByIDWithCounts", int64(1), int64(1)).Return(fullAlice, nil)
-
-	token, _ := srv.JWT.GenerateAccessToken(1, "alice")
-	req := httptest.NewRequest("GET", "/api/me", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	w := httptest.NewRecorder()
-
-	srv.APIGetMe(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	var body map[string]interface{}
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-	assert.Equal(t, "alice", body["username"])
-	assert.Equal(t, "hello", body["bio"])
-	assert.Equal(t, float64(10), body["photo_count"])
-}
-
-func TestAPIGetMe_RepoError(t *testing.T) {
-	srv, mockRepos := setupTestServer()
-	alice := &models.User{ID: 1, Username: "alice"}
-	mockRepos.Users.On("GetByID", int64(1)).Return(alice, nil)
-	mockRepos.Users.On("GetByIDWithCounts", int64(1), int64(1)).Return(nil, errors.New("db error"))
-
-	token, _ := srv.JWT.GenerateAccessToken(1, "alice")
-	req := httptest.NewRequest("GET", "/api/me", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	w := httptest.NewRecorder()
-
-	srv.APIGetMe(w, req)
-
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-}
-
 // --- APIGetNuis ---
 
 func TestAPIGetNuis_Success(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, _ := newHandler()
 	nuis := []models.Nui{{ID: 1, Name: "nature"}, {ID: 2, Name: "travel"}}
 	mockRepos.Nuis.On("GetAll").Return(nuis, nil)
 
 	req := httptest.NewRequest("GET", "/api/nuis", nil)
 	w := httptest.NewRecorder()
 
-	srv.APIGetNuis(w, req)
+	h.APIGetNuis(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestAPIGetNuis_RepoError(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, _ := newHandler()
 	mockRepos.Nuis.On("GetAll").Return([]models.Nui{}, errors.New("db error"))
 
 	req := httptest.NewRequest("GET", "/api/nuis", nil)
 	w := httptest.NewRecorder()
 
-	srv.APIGetNuis(w, req)
+	h.APIGetNuis(w, req)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
@@ -290,30 +258,30 @@ func TestAPIGetNuis_RepoError(t *testing.T) {
 // --- APIToggleFavorite ---
 
 func TestAPIToggleFavorite_Unauthorized(t *testing.T) {
-	srv, _ := setupTestServer()
+	h, _, _ := newHandler()
 
 	req := httptest.NewRequest("POST", "/api/photo/1/favorite", nil)
 	req.SetPathValue("id", "1")
 	w := httptest.NewRecorder()
 
-	srv.APIToggleFavorite(w, req)
+	h.APIToggleFavorite(w, req)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
 func TestAPIToggleFavorite_Success(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, jwtMgr := newHandler()
 	alice := &models.User{ID: 1, Username: "alice"}
 	mockRepos.Users.On("GetByID", int64(1)).Return(alice, nil)
 	mockRepos.Favorites.On("Toggle", int64(5), int64(1)).Return(true, nil)
 
-	token, _ := srv.JWT.GenerateAccessToken(1, "alice")
+	token, _ := jwtMgr.GenerateAccessToken(1, "alice")
 	req := httptest.NewRequest("POST", "/api/photo/5/favorite", nil)
 	req.SetPathValue("id", "5")
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
-	srv.APIToggleFavorite(w, req)
+	h.APIToggleFavorite(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var body map[string]interface{}
@@ -322,72 +290,39 @@ func TestAPIToggleFavorite_Success(t *testing.T) {
 }
 
 func TestAPIToggleFavorite_RepoError(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, jwtMgr := newHandler()
 	alice := &models.User{ID: 1, Username: "alice"}
 	mockRepos.Users.On("GetByID", int64(1)).Return(alice, nil)
 	mockRepos.Favorites.On("Toggle", int64(5), int64(1)).Return(false, errors.New("db error"))
 
-	token, _ := srv.JWT.GenerateAccessToken(1, "alice")
+	token, _ := jwtMgr.GenerateAccessToken(1, "alice")
 	req := httptest.NewRequest("POST", "/api/photo/5/favorite", nil)
 	req.SetPathValue("id", "5")
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
-	srv.APIToggleFavorite(w, req)
+	h.APIToggleFavorite(w, req)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
-}
-
-// --- APIGetUser ---
-
-func TestAPIGetUser_NotFound(t *testing.T) {
-	srv, mockRepos := setupTestServer()
-	mockRepos.Users.On("GetByUsernameWithCounts", "nobody", int64(0)).Return(nil, sql.ErrNoRows)
-
-	req := httptest.NewRequest("GET", "/api/user/nobody", nil)
-	req.SetPathValue("username", "nobody")
-	w := httptest.NewRecorder()
-
-	srv.APIGetUser(w, req)
-
-	assert.Equal(t, http.StatusNotFound, w.Code)
-}
-
-func TestAPIGetUser_Success(t *testing.T) {
-	srv, mockRepos := setupTestServer()
-	bob := &models.User{ID: 2, Username: "bob", Bio: "hey", PhotoCount: 5, IsFollowing: false}
-	mockRepos.Users.On("GetByUsernameWithCounts", "bob", int64(0)).Return(bob, nil)
-
-	req := httptest.NewRequest("GET", "/api/user/bob", nil)
-	req.SetPathValue("username", "bob")
-	w := httptest.NewRecorder()
-
-	srv.APIGetUser(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	var body map[string]interface{}
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-	assert.Equal(t, "bob", body["username"])
-	assert.Equal(t, false, body["is_following"])
 }
 
 // --- APIGetUserPhotos ---
 
 func TestAPIGetUserPhotos_UserNotFound(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, _ := newHandler()
 	mockRepos.Users.On("GetByUsername", "ghost").Return(nil, sql.ErrNoRows)
 
 	req := httptest.NewRequest("GET", "/api/user/ghost/photos", nil)
 	req.SetPathValue("username", "ghost")
 	w := httptest.NewRecorder()
 
-	srv.APIGetUserPhotos(w, req)
+	h.APIGetUserPhotos(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestAPIGetUserPhotos_Success(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, _ := newHandler()
 	bob := &models.User{ID: 2, Username: "bob"}
 	mockRepos.Users.On("GetByUsername", "bob").Return(bob, nil)
 	paginationResult := &repository.PaginationResult{Photos: []models.PhotoWithNuis{}}
@@ -397,60 +332,7 @@ func TestAPIGetUserPhotos_Success(t *testing.T) {
 	req.SetPathValue("username", "bob")
 	w := httptest.NewRecorder()
 
-	srv.APIGetUserPhotos(w, req)
+	h.APIGetUserPhotos(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-}
-
-// --- APIGetFollowStatus ---
-
-func TestAPIGetFollowStatus_Unauthorized(t *testing.T) {
-	srv, _ := setupTestServer()
-
-	req := httptest.NewRequest("GET", "/api/user/bob/follow-status", nil)
-	req.SetPathValue("username", "bob")
-	w := httptest.NewRecorder()
-
-	srv.APIGetFollowStatus(w, req)
-
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
-}
-
-func TestAPIGetFollowStatus_UserNotFound(t *testing.T) {
-	srv, mockRepos := setupTestServer()
-	alice := &models.User{ID: 1, Username: "alice"}
-	mockRepos.Users.On("GetByID", int64(1)).Return(alice, nil)
-	mockRepos.Users.On("GetByUsername", "ghost").Return(nil, sql.ErrNoRows)
-
-	token, _ := srv.JWT.GenerateAccessToken(1, "alice")
-	req := httptest.NewRequest("GET", "/api/user/ghost/follow-status", nil)
-	req.SetPathValue("username", "ghost")
-	req.Header.Set("Authorization", "Bearer "+token)
-	w := httptest.NewRecorder()
-
-	srv.APIGetFollowStatus(w, req)
-
-	assert.Equal(t, http.StatusNotFound, w.Code)
-}
-
-func TestAPIGetFollowStatus_Success(t *testing.T) {
-	srv, mockRepos := setupTestServer()
-	alice := &models.User{ID: 1, Username: "alice"}
-	bob := &models.User{ID: 2, Username: "bob"}
-	mockRepos.Users.On("GetByID", int64(1)).Return(alice, nil)
-	mockRepos.Users.On("GetByUsername", "bob").Return(bob, nil)
-	mockRepos.Follows.On("IsFollowing", int64(1), int64(2)).Return(true)
-
-	token, _ := srv.JWT.GenerateAccessToken(1, "alice")
-	req := httptest.NewRequest("GET", "/api/user/bob/follow-status", nil)
-	req.SetPathValue("username", "bob")
-	req.Header.Set("Authorization", "Bearer "+token)
-	w := httptest.NewRecorder()
-
-	srv.APIGetFollowStatus(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	var body map[string]bool
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-	assert.True(t, body["is_following"])
 }

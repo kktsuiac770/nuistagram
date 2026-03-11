@@ -1,4 +1,4 @@
-package server
+package health
 
 import (
 	"database/sql"
@@ -11,15 +11,24 @@ import (
 	"nuistagram/internal/monitoring/metrics"
 )
 
-func (s *Server) Healthz(w http.ResponseWriter, r *http.Request) {
+// Handler handles health and observability endpoints.
+type Handler struct {
+	db *sql.DB
+}
+
+func New(db *sql.DB) *Handler {
+	return &Handler{db: db}
+}
+
+func (h *Handler) Healthz(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-func (s *Server) Readyz(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Readyz(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	if err := database.HealthCheck(s.db()); err != nil {
+	if err := database.HealthCheck(h.db); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status": "not ready",
@@ -38,14 +47,8 @@ func (s *Server) Readyz(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) db() *sql.DB {
-	// Access DB through the photo repository's underlying connection.
-	// We store a reference on the server for health checks.
-	return s.DB
-}
-
-func (s *Server) registerHealthRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("/healthz", s.Healthz)
-	mux.HandleFunc("/readyz", s.Readyz)
+func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/healthz", h.Healthz)
+	mux.HandleFunc("/readyz", h.Readyz)
 	mux.Handle("/metrics", promhttp.HandlerFor(metrics.Registry, promhttp.HandlerOpts{}))
 }

@@ -1,4 +1,4 @@
-package server
+package health
 
 import (
 	"encoding/json"
@@ -11,11 +11,11 @@ import (
 )
 
 func TestHealthz(t *testing.T) {
-	srv, _ := setupTestServer()
+	h := New(nil)
 	req := httptest.NewRequest("GET", "/healthz", nil)
 	w := httptest.NewRecorder()
 
-	srv.Healthz(w, req)
+	h.Healthz(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
@@ -26,14 +26,12 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestReadyz_DBNil_Returns503(t *testing.T) {
-	srv, _ := setupTestServer()
-	// DB is nil in test server — HealthCheck returns sql.ErrConnDone
-	srv.DB = nil
+	h := New(nil) // nil DB causes HealthCheck to fail
 
 	req := httptest.NewRequest("GET", "/readyz", nil)
 	w := httptest.NewRecorder()
 
-	srv.Readyz(w, req)
+	h.Readyz(w, req)
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 

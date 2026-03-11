@@ -63,11 +63,8 @@ func SetupTestServer(mux *http.ServeMux) (*TestServer, error) {
 		return nil, fmt.Errorf("init jwt: %w", err)
 	}
 
-	srv := &server.Server{
-		Repos: repos,
-		JWT:   jwtMgr,
-		DB:    db,
-	}
+	cfg := &config.Config{JWT: jwtConfig}
+	srv := server.NewForTest(db, jwtMgr, cfg)
 
 	httpServer := httptest.NewServer(mux)
 	client := httpServer.Client()

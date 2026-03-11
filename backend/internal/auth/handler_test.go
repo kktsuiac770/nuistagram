@@ -1,4 +1,4 @@
-package server
+package auth
 
 import (
 	"bytes"
@@ -15,8 +15,6 @@ import (
 	jwtpkg "nuistagram/internal/jwt"
 	"nuistagram/internal/models"
 	"nuistagram/internal/monitoring/metrics"
-	"nuistagram/internal/ratelimit"
-	"nuistagram/internal/repository"
 	"nuistagram/internal/repository/mocks"
 
 	"github.com/stretchr/testify/assert"
@@ -24,36 +22,21 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func setupTestServer() (*Server, *mocks.MockRepositories) {
+func newHandler() (*Handler, *mocks.MockRepositories, *jwtpkg.Manager) {
 	metrics.Init()
 	mockRepos := mocks.NewMockRepositories()
-	c := config.JWTConfig{
+	jwtConfig := config.JWTConfig{
 		Secret:          "test-secret-key-for-unit-tests-32b",
 		AccessTokenTTL:  15 * time.Minute,
 		RefreshTokenTTL: 7 * 24 * time.Hour,
 	}
-	jwtMgr, _ := jwtpkg.NewManager(c)
-	srv := &Server{
-		Repos: &repository.Repositories{
-			Users:         mockRepos.Users,
-			Nuis:          mockRepos.Nuis,
-			Photos:        mockRepos.Photos,
-			Albums:        mockRepos.Albums,
-			Favorites:     mockRepos.Favorites,
-			Follows:       mockRepos.Follows,
-			Likes:         mockRepos.Likes,
-			Comments:      mockRepos.Comments,
-			Notifications: mockRepos.Notifications,
-		},
-		JWT:    jwtMgr,
-		Config: &config.Config{},
-		Limits: ratelimit.New(),
-	}
-	return srv, mockRepos
+	jwtMgr, _ := jwtpkg.NewManager(jwtConfig)
+	h := New(mockRepos.Users, jwtMgr)
+	return h, mockRepos, jwtMgr
 }
 
 func TestRegister_Success(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, _ := newHandler()
 
 	mockRepos.Users.On("Create", "testuser", mock.AnythingOfType("string")).Return(int64(1), nil)
 
@@ -65,7 +48,7 @@ func TestRegister_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
-	srv.Register(w, req)
+	h.Register(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var response map[string]interface{}
@@ -79,7 +62,7 @@ func TestRegister_Success(t *testing.T) {
 }
 
 func TestRegister_MissingFields(t *testing.T) {
-	srv, _ := setupTestServer()
+	h, _, _ := newHandler()
 
 	tests := []struct {
 		name     string
@@ -101,7 +84,7 @@ func TestRegister_MissingFields(t *testing.T) {
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
 
-			srv.Register(w, req)
+			h.Register(w, req)
 
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 		})
@@ -109,7 +92,7 @@ func TestRegister_MissingFields(t *testing.T) {
 }
 
 func TestRegister_UsernameTooShort(t *testing.T) {
-	srv, _ := setupTestServer()
+	h, _, _ := newHandler()
 
 	form := url.Values{}
 	form.Add("username", "ab")
@@ -119,13 +102,13 @@ func TestRegister_UsernameTooShort(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
-	srv.Register(w, req)
+	h.Register(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestRegister_WeakPassword(t *testing.T) {
-	srv, _ := setupTestServer()
+	h, _, _ := newHandler()
 
 	tests := []struct {
 		name     string
@@ -147,7 +130,7 @@ func TestRegister_WeakPassword(t *testing.T) {
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
 
-			srv.Register(w, req)
+			h.Register(w, req)
 
 			assert.Equal(t, http.StatusBadRequest, w.Code)
 		})
@@ -155,7 +138,7 @@ func TestRegister_WeakPassword(t *testing.T) {
 }
 
 func TestRegister_DuplicateUsername(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, _ := newHandler()
 
 	mockRepos.Users.On("Create", "existinguser", mock.AnythingOfType("string")).Return(int64(0), sql.ErrNoRows)
 
@@ -167,14 +150,14 @@ func TestRegister_DuplicateUsername(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
-	srv.Register(w, req)
+	h.Register(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	mockRepos.Users.AssertExpectations(t)
 }
 
 func TestLogin_Success(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, _ := newHandler()
 
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("Password123"), bcrypt.DefaultCost)
 	mockUser := &models.User{
@@ -193,7 +176,7 @@ func TestLogin_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
-	srv.Login(w, req)
+	h.Login(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var response map[string]interface{}
@@ -207,7 +190,7 @@ func TestLogin_Success(t *testing.T) {
 }
 
 func TestLogin_InvalidUsername(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, _ := newHandler()
 
 	mockRepos.Users.On("GetByUsername", "nonexistent").Return(nil, sql.ErrNoRows)
 
@@ -219,14 +202,14 @@ func TestLogin_InvalidUsername(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
-	srv.Login(w, req)
+	h.Login(w, req)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 	mockRepos.Users.AssertExpectations(t)
 }
 
 func TestLogin_InvalidPassword(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, _ := newHandler()
 
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("CorrectPass123"), bcrypt.DefaultCost)
 	mockUser := &models.User{
@@ -245,20 +228,20 @@ func TestLogin_InvalidPassword(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
-	srv.Login(w, req)
+	h.Login(w, req)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 	mockRepos.Users.AssertExpectations(t)
 }
 
 func TestLogout_Success(t *testing.T) {
-	srv, _ := setupTestServer()
+	h, _, _ := newHandler()
 
 	req := httptest.NewRequest("POST", "/logout", strings.NewReader(`{"refresh_token":""}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	srv.Logout(w, req)
+	h.Logout(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var response map[string]bool
@@ -268,7 +251,7 @@ func TestLogout_Success(t *testing.T) {
 }
 
 func TestRefresh_Success(t *testing.T) {
-	srv, mockRepos := setupTestServer()
+	h, mockRepos, jwtMgr := newHandler()
 
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("Password123"), bcrypt.DefaultCost)
 	mockUser := &models.User{
@@ -278,45 +261,45 @@ func TestRefresh_Success(t *testing.T) {
 	}
 	mockRepos.Users.On("GetByID", int64(1)).Return(mockUser, nil)
 
-	refreshToken, _ := srv.JWT.GenerateRefreshToken(1)
+	refreshToken, _ := jwtMgr.GenerateRefreshToken(1)
 
 	body, _ := json.Marshal(map[string]string{"refresh_token": refreshToken})
 	req := httptest.NewRequest("POST", "/api/refresh", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	srv.Refresh(w, req)
+	h.Refresh(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var response map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NotEmpty(t, response["access_token"])
 	assert.NotEmpty(t, response["refresh_token"])
-	assert.NotEqual(t, refreshToken, response["refresh_token"]) // rotation: new token issued
+	assert.NotEqual(t, refreshToken, response["refresh_token"])
 	mockRepos.Users.AssertExpectations(t)
 }
 
 func TestRefresh_InvalidToken(t *testing.T) {
-	srv, _ := setupTestServer()
+	h, _, _ := newHandler()
 
 	body, _ := json.Marshal(map[string]string{"refresh_token": "notvalid"})
 	req := httptest.NewRequest("POST", "/api/refresh", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	srv.Refresh(w, req)
+	h.Refresh(w, req)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
 func TestRefresh_MissingToken(t *testing.T) {
-	srv, _ := setupTestServer()
+	h, _, _ := newHandler()
 
 	req := httptest.NewRequest("POST", "/api/refresh", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	srv.Refresh(w, req)
+	h.Refresh(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
@@ -345,4 +328,40 @@ func TestValidatePassword(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCurrentUser_NoAuthHeader(t *testing.T) {
+	h, _, _ := newHandler()
+	req := httptest.NewRequest("GET", "/", nil)
+	assert.Nil(t, h.CurrentUser(req))
+}
+
+func TestCurrentUser_InvalidToken(t *testing.T) {
+	h, _, _ := newHandler()
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Authorization", "Bearer invalid.token.here")
+	assert.Nil(t, h.CurrentUser(req))
+}
+
+func TestCurrentUser_ValidToken(t *testing.T) {
+	h, mockRepos, jwtMgr := newHandler()
+	mockUser := &models.User{ID: 1, Username: "alice"}
+	mockRepos.Users.On("GetByID", int64(1)).Return(mockUser, nil)
+
+	token, _ := jwtMgr.GenerateAccessToken(1, "alice")
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	got := h.CurrentUser(req)
+	assert.NotNil(t, got)
+	assert.Equal(t, int64(1), got.ID)
+	mockRepos.Users.AssertExpectations(t)
+}
+
+func TestCurrentUser_BearerPrefixRequired(t *testing.T) {
+	h, _, jwtMgr := newHandler()
+	token, _ := jwtMgr.GenerateAccessToken(1, "alice")
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Authorization", token) // missing "Bearer " prefix
+	assert.Nil(t, h.CurrentUser(req))
 }
